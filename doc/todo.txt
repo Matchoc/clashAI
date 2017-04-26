@@ -1,0 +1,17 @@
+- Run basic sequence 
+   - start battle
+   - play some cards
+   - check for game end
+   - click "ok"
+   - start next battle
+
+- Advanced :
+   - Calculate remaining mana
+   - Calculate arena time
+   - Determine ennemy/allied position
+   - Determine ennemy/allied types
+   - Calculate unit health
+   - Calculate tower health
+
+Really Advanced :
+   - Robot reward system training.
