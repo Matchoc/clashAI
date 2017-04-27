@@ -35,6 +35,18 @@ def myprint(msg, level=0):
 	if (level >= PRINT_LEVEL):
 		sys.stdout.buffer.write((str(msg) + "\n").encode('UTF-8'))
 		
+# =============================================================================
+# WINAPI SEQUENCE RUN	
+def moveMouse(x,y):
+	win32api.SetCursorPos((x,y))	
+
+def click(x,y):
+	win32api.SetCursorPos((x,y))
+	sleep(.5)
+	win32api.mouse_event(win32con.MOUSEEVENTF_LEFTDOWN,x,y,0,0)
+	sleep(.5)
+	win32api.mouse_event(win32con.MOUSEEVENTF_LEFTUP,x,y,0,0)		
+
 def getWindowByTitle(title_text, exact = False):
 	def _window_callback(hwnd, all_windows):
 		all_windows.append((hwnd, win32gui.GetWindowText(hwnd)))
@@ -133,36 +145,151 @@ def takeScreenshot(hwnd = None):
 	pathbmp = os.path.join(pathbmp, "ss-" + timestr + ".png")
 	
 	#couldn't find another easy way to convert to png
-	myBitMap.SaveBitmapFile(newDC,pathbmp)		
-		
+	myBitMap.SaveBitmapFile(newDC,pathbmp)
+	
+# =============================================================================
+# UTIL METHOD
+def toXYCoord(pixIndex, w):
+	y = int(pixIndex / w)
+	floaty = pixIndex / w
+	fraction = floaty - y
+	timew = fraction * w
+	x = int((((pixIndex / w) - y) * w) + 0.5)
+	return [x, y]
+
+def parseUint(val):
+	if val < 0:
+		return val + 2**8
+	else:
+		return val
+	
+def asPILFormat(asTuple, hasAlpha):
+	if hasAlpha:
+		returnList = [
+			tuple(
+				[
+					parseUint(asTuple[(x*4)+2]), 
+					parseUint(asTuple[(x*4)+1]), 
+					parseUint(asTuple[(x*4)]), 
+					255
+				]
+			) for x in range(int(len(asTuple) / 4))]
+	else:
+		returnList = [
+			tuple(
+				[
+					parseUint(asTuple[(x*4)+2]), 
+					parseUint(asTuple[(x*4)+1]), 
+					parseUint(asTuple[(x*4)])
+				]
+			) for x in range(int(len(asTuple) / 4))]
+	return returnList
+	
+def toPixIndex(coord, w):
+	if coord[0] >= w or coord[0] < 0 or coord[1] < 0:
+		return -1
+	return (coord[1] * w) + coord[0]
+	
+# =============================================================================
+# GAME LOGIC
+def searchCoordInScreen(pixelToFind, w, h, hasAlpha):
+	for pixIndex in range(len(gScreen)):
+		pix = gScreen[pixIndex]
+		if pix[0] == pixelToFind[0][0] and pix[1] == pixelToFind[0][1] and pix[2] == pixelToFind[0][2]:
+			match = True
+			row = 0
+			while(match and row < 1):
+				coordscreen = toXYCoord(pixIndex, gScreenWidth)
+				coordscreen[0] += row
+				screenIndex = toPixIndex(coordscreen, gScreenWidth)
+				if screenIndex > len(gScreen):
+					match = False
+					break;
+				
+				coordimg = (row, 0)
+				imgIndex = toPixIndex(coordimg, w)
+				
+				screenline = []
+				if hasAlpha:
+					screenline = gScreenAlpha[screenIndex:screenIndex+w]
+				else:
+					screenline = gScreen[screenIndex:screenIndex+w]
+				subimgline = pixelToFind[imgIndex:imgIndex+w]
+				intersectpix = set(subimgline).intersection(screenline)
+				#myprint("Found intersection line " + str(row) + " : " + str(intersectpix))
+				if screenline != subimgline:
+					match = False
+				row += 1
+			if match == True:
+				coord = toXYCoord(pixIndex, gScreenWidth)
+				coord[0] += int(w / 2) + gScreenOffsetL
+				coord[1] += int(h / 2) + gScreenOffsetT
+				return coord
+	return None
+
+def calculate_offset_from_appname_ref(data):
+	im = Image.open(data["ref_img"]["appname"])
+	width, height = im.size
+	btnpixeldata = list(im.getdata())
+	hasAlpha = im.mode == "RGBA"
+	coord = searchCoordInScreen(btnpixeldata, width, height, hasAlpha)
+	coord[0] -= int(width/2)
+	coord[1] -= int(height/2)
+	data["appname_world_ref"] = coord
+	
+def calculate_absolute_button_pos(data):
+	data["button_abs_coords"] = {}
+	appname_abs_offset_x = data["appname_world_ref"][0] - data["button_coords"]["appname"][0]
+	appname_abs_offset_y = data["appname_world_ref"][1] - data["button_coords"]["appname"][1]
+	for button_name in data["button_coords"]:
+		world_pos_x = data["button_coords"][button_name][0] + appname_abs_offset_x
+		world_pos_y = data["button_coords"][button_name][1] + appname_abs_offset_y
+		data["button_abs_coords"][button_name] = (world_pos_x, world_pos_y)
+
 def run_all(actions, data):
-	handle = getWindowByTitle("BlueStacks", False)
-	takeScreenshot(handle[0])
+	if data["use_paint"] == True:
+		handle = getWindowByTitle("Paint", False)
+	else:
+		handle = getWindowByTitle("BlueStacks", False)
+	updateScreen(handle[0])
+	calculate_offset_from_appname_ref(data)
+	calculate_absolute_button_pos(data)
+	myprint("found appname ref at : " + str(data["appname_world_ref"]),2)
+	moveMouse(*data["button_abs_coords"]["card3"])
+	#takeScreenshot(handle[0])
 		
 if __name__ == '__main__':
 	
 	run_all([
-			#"clean",
-			"update_price_and_return",
-			"update_avg_price",
-			"update_std_dev",
-			"update_volume",
-			"update_avg_volume",
-			"update_slope",
-			"calculate_weighted_sort",
-			"print_sort",
-			#"save_data",
 			"none" # put this here so I don't have to add , when I change list size.
 		],
-		{		
-			"sort_by":"per_cummulative_return",
-			"start_date":"2017-03-24",
-			"delta_weeks":20,
-			"estimators": [
-				{"name":"avg_volume", "weight":0.1, "min":100000.0, "max":900000.0, "true_value":900000.0},
-				{"name":"avg_price", "weight":0.5, "min":10.0, "max":125.0, "true_value":50.0},
-				{"name":"slope", "weight":0.4, "min":-0.05, "max":999999.0, "true_value":0.05}
-			]
+		{
+			"use_paint" : True,
+			"ref_img" : {
+				"appname" : os.path.join(DATA_FOLDER, "ref", "appname.png")
+			},
+			"button_coords" : {
+				"battle" : (677,477),
+				"finish" : (676,645),
+				"card0" : (600,650),
+				"card1" : (675,650),
+				"card2" : (750,650),
+				"card3" : (825,650),
+				"appname" : (245,3)
+			},
+			"game_area" : {
+				"top":31,
+				"left":481,
+				"width":391,
+				"height":696
+			},
+			"drop_area" : {
+				"top":340,
+				"left":452,
+				"width":333,
+				"height":210
+			},
+			"grid_size" : (18,15)
 		})
 	
 	myprint("done", 5)
