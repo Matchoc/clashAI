@@ -30,6 +30,9 @@ from PIL import Image
 #from sklearn.metrics import label_ranking_average_precision_score
 
 DATA_FOLDER = "data"
+RED = 0
+GREEN = 1
+BLUE = 2
 PRINT_LEVEL=1
 def myprint(msg, level=0):
 	if (level >= PRINT_LEVEL):
@@ -192,6 +195,38 @@ def toPixIndex(coord, w):
 	
 # =============================================================================
 # GAME LOGIC
+def get_current_screen_name(data):
+	homescreen_coord = data["button_abs_coords"]["homescreen"]
+	homescreen_color = data["screen_colors"]["homescreen"]
+	battlescreen_coord = data["button_abs_coords"]["battlescreen"]
+	battlescreen_color = data["screen_colors"]["battlescreen"]
+	victoryscreen_coord = data["button_abs_coords"]["victoryscreen"]
+	victoryscreen_color = data["screen_colors"]["victoryscreen"]
+	
+	homescreen_index = toPixIndex(homescreen_coord, gScreenWidth)
+	battlescreen_index = toPixIndex(battlescreen_coord, gScreenWidth)
+	victoryscreen_index = toPixIndex(victoryscreen_coord, gScreenWidth)
+	
+	screen_home_val = gScreen[homescreen_index]
+	screen_battle_val = gScreen[battlescreen_index]
+	screen_victory_val = gScreen[victoryscreen_index]
+	
+	myprint("color at home ({x},{y}) : {home}, at battle ({x2},{y2}) : {battle}, at victory ({x3},{y3}) : {victory}".format(
+		x=homescreen_coord[0], y=homescreen_coord[1], home=screen_home_val, x2=battlescreen_coord[0], y2=battlescreen_coord[1],
+		battle=screen_battle_val, x3=victoryscreen_coord[0], y3=victoryscreen_coord[1], victory=screen_victory_val
+	), 2)
+	
+	if screen_home_val[RED] == homescreen_color[RED] and screen_home_val[BLUE] == homescreen_color[BLUE] and screen_home_val[GREEN] == homescreen_color[GREEN]:
+		return "homescreen"
+	elif screen_battle_val[RED] == battlescreen_color[RED] and screen_battle_val[BLUE] == battlescreen_color[BLUE] and screen_battle_val[GREEN] == battlescreen_color[GREEN]:
+		return "battlescreen"
+	elif screen_victory_val[RED] == victoryscreen_color[RED] and screen_victory_val[BLUE] == victoryscreen_color[BLUE] and screen_victory_val[GREEN] == victoryscreen_color[GREEN]:
+		return "victoryscreen"
+	else:
+		myprint("Error: Could not identify current screen !", 5)
+		return None
+	
+
 def searchCoordInScreen(pixelToFind, w, h, hasAlpha):
 	for pixIndex in range(len(gScreen)):
 		pix = gScreen[pixIndex]
@@ -245,7 +280,7 @@ def calculate_absolute_button_pos(data):
 		world_pos_x = data["button_coords"][button_name][0] + appname_abs_offset_x
 		world_pos_y = data["button_coords"][button_name][1] + appname_abs_offset_y
 		data["button_abs_coords"][button_name] = (world_pos_x, world_pos_y)
-
+		
 def run_all(actions, data):
 	if data["use_paint"] == True:
 		handle = getWindowByTitle("Paint", False)
@@ -255,7 +290,9 @@ def run_all(actions, data):
 	calculate_offset_from_appname_ref(data)
 	calculate_absolute_button_pos(data)
 	myprint("found appname ref at : " + str(data["appname_world_ref"]),2)
-	moveMouse(*data["button_abs_coords"]["card3"])
+	cur_screen = get_current_screen_name(data)
+	myprint("current screen name = " + cur_screen)
+	#moveMouse(*data["button_abs_coords"]["card3"])
 	#takeScreenshot(handle[0])
 		
 if __name__ == '__main__':
@@ -275,7 +312,15 @@ if __name__ == '__main__':
 				"card1" : (675,650),
 				"card2" : (750,650),
 				"card3" : (825,650),
-				"appname" : (245,3)
+				"appname" : (245,3),
+				"homescreen" : (683,453),
+				"battlescreen" : (711,598),
+				"victoryscreen" : (673,631)
+			},
+			"screen_colors" : {
+				"homescreen" : [255,208,83], # color of the pixel at button_coords/homescreen
+				"battlescreen" : [167,135,101],
+				"victoryscreen" : [104,187,255]
 			},
 			"game_area" : {
 				"top":31,
