@@ -1,11 +1,9 @@
-- Run basic sequence 
-   - start battle
-   - play some cards
-   - check for game end
-   - click "ok"
-   - start next battle
+todo:
+- Fix detect of victory, color of button change ever so slightly by the arena. Use "close enough" ?
+- delta time.seconds doesn't give me fraction... use millisecond ?
 
 - Advanced :
+   - determine card in hand
    - Calculate remaining mana
    - Calculate arena time
    - Determine ennemy/allied position
@@ -15,3 +13,11 @@
 
 Really Advanced :
    - Robot reward system training.
+
+done :
+- Run basic sequence 
+   - start battle
+   - play some cards
+   - check for game end
+   - click "ok"
+   - start next battle

@@ -30,10 +30,10 @@ from PIL import Image
 #from sklearn.metrics import label_ranking_average_precision_score
 
 DATA_FOLDER = "data"
-RED = 0
+RED = 2
 GREEN = 1
-BLUE = 2
-PRINT_LEVEL=1
+BLUE = 0
+PRINT_LEVEL=0
 def myprint(msg, level=0):
 	if (level >= PRINT_LEVEL):
 		sys.stdout.buffer.write((str(msg) + "\n").encode('UTF-8'))
@@ -62,13 +62,12 @@ def getWindowByTitle(title_text, exact = False):
 		
 gScreen = []
 gScreenAlpha = []
-gScreenNumpy = []
-gScreenAlphaNumpy = []
 gScreenOffsetT = 0
 gScreenOffsetL = 0
 gScreenWidth = 0
 gScreenHeight = 0
-def updateScreen(hwnd = None):
+def updateScreen(hwnd = None, wait_focus=True):
+	starttime = datetime.datetime.now()
 	global gScreen
 	global gScreenAlpha
 	global gScreenOffsetT
@@ -98,16 +97,21 @@ def updateScreen(hwnd = None):
 	newDC.SelectObject(myBitMap)
 
 	win32gui.SetForegroundWindow(hwnd)
-	sleep(.2) #lame way to allow screen to draw before taking shot
+	if wait_focus:
+		sleep(.2) #lame way to allow screen to draw before taking shot
 	newDC.BitBlt((0,0),(w, h) , myDC, (0,0), win32con.SRCCOPY)
 	myBitMap.Paint(newDC)
 	asTuple = myBitMap.GetBitmapBits(False)
+	
 	# transform asTuple into modifiable list
-	gScreen = asPILFormat(asTuple, False)
-	gScreenAlpha = asPILFormat(asTuple, True)
-	gScreenToNumpy()
+	gScreen = numpy.array(asTuple)
+	gScreen = numpy.where(gScreen < 0, gScreen + 2**8, gScreen)
+	gScreen = gScreen.reshape(gScreenHeight * gScreenWidth, 4)
+	gScreenAlpha = gScreen
 	
 	myprint("screenWidth : " + str(gScreenWidth) + ", screenHeight : " + str(gScreenHeight) + ", offsetL : " + str(gScreenOffsetL)  + ", offsetT : " + str(gScreenOffsetT))
+	delta = datetime.datetime.now() - starttime
+	myprint("updateScreen took " + str(delta),3)	
 
 def gScreenToNumpy():
 	global gScreenNumpy
@@ -196,11 +200,11 @@ def toPixIndex(coord, w):
 # =============================================================================
 # GAME LOGIC
 def get_current_screen_name(data):
-	homescreen_coord = data["button_abs_coords"]["homescreen"]
+	homescreen_coord = (data["button_abs_coords"]["homescreen"][0] - gScreenOffsetL, data["button_abs_coords"]["homescreen"][1] - gScreenOffsetT)
 	homescreen_color = data["screen_colors"]["homescreen"]
-	battlescreen_coord = data["button_abs_coords"]["battlescreen"]
+	battlescreen_coord = (data["button_abs_coords"]["battlescreen"][0] - gScreenOffsetL, data["button_abs_coords"]["battlescreen"][1] - gScreenOffsetT)
 	battlescreen_color = data["screen_colors"]["battlescreen"]
-	victoryscreen_coord = data["button_abs_coords"]["victoryscreen"]
+	victoryscreen_coord = (data["button_abs_coords"]["victoryscreen"][0] - gScreenOffsetL, data["button_abs_coords"]["victoryscreen"][1] - gScreenOffsetT)
 	victoryscreen_color = data["screen_colors"]["victoryscreen"]
 	
 	homescreen_index = toPixIndex(homescreen_coord, gScreenWidth)
@@ -250,10 +254,17 @@ def searchCoordInScreen(pixelToFind, w, h, hasAlpha):
 				else:
 					screenline = gScreen[screenIndex:screenIndex+w]
 				subimgline = pixelToFind[imgIndex:imgIndex+w]
-				intersectpix = set(subimgline).intersection(screenline)
+				screenline = screenline.tolist()
+				
+				for i in range(len(screenline)):
+					if subimgline[i][0] != screenline[i][0] or subimgline[i][1] != screenline[i][1] or subimgline[i][2] != screenline[i][2]:
+						match = False
+						break
+				
+				#intersectpix = set(subimgline).intersection(screenline)
 				#myprint("Found intersection line " + str(row) + " : " + str(intersectpix))
-				if screenline != subimgline:
-					match = False
+				#if screenline != subimgline:
+				#	match = False
 				row += 1
 			if match == True:
 				coord = toXYCoord(pixIndex, gScreenWidth)
@@ -262,11 +273,26 @@ def searchCoordInScreen(pixelToFind, w, h, hasAlpha):
 				return coord
 	return None
 
+def convert_RGB_to_BGR(img):
+	returnList = [[x[2], x[1], x[0], x[3]] for x in img]
+	return returnList
+	
+def board_coord_to_mousepos(data, a, b):
+	square_dim_x = data["drop_area"]["width"] / data["grid_size"][0]
+	square_dim_y = data["drop_area"]["height"] / data["grid_size"][1]
+	pos_x = data["drop_area_abs"]["left"] + (a * square_dim_x)
+	pos_y = data["drop_area_abs"]["top"] + (b * square_dim_y)
+	
+	myprint("square_dim_x : {dimx}, square_dim_y : {dimy}, a {va}, b {vb}, abs left {aleft}, abs top {atop}, finalx {fx}, finaly {fy}".format(
+		dimx=square_dim_x, dimy=square_dim_y, va=a, vb=b, aleft=data["drop_area_abs"]["left"], atop=data["drop_area_abs"]["top"], fx=pos_x, fy=pos_y))
+	return int(pos_x), int(pos_y)
+	
 def calculate_offset_from_appname_ref(data):
 	im = Image.open(data["ref_img"]["appname"])
 	width, height = im.size
 	btnpixeldata = list(im.getdata())
 	hasAlpha = im.mode == "RGBA"
+	btnpixeldata = convert_RGB_to_BGR(btnpixeldata)
 	coord = searchCoordInScreen(btnpixeldata, width, height, hasAlpha)
 	coord[0] -= int(width/2)
 	coord[1] -= int(height/2)
@@ -274,6 +300,7 @@ def calculate_offset_from_appname_ref(data):
 	
 def calculate_absolute_button_pos(data):
 	data["button_abs_coords"] = {}
+	data["drop_area_abs"] = {}
 	appname_abs_offset_x = data["appname_world_ref"][0] - data["button_coords"]["appname"][0]
 	appname_abs_offset_y = data["appname_world_ref"][1] - data["button_coords"]["appname"][1]
 	for button_name in data["button_coords"]:
@@ -281,27 +308,97 @@ def calculate_absolute_button_pos(data):
 		world_pos_y = data["button_coords"][button_name][1] + appname_abs_offset_y
 		data["button_abs_coords"][button_name] = (world_pos_x, world_pos_y)
 		
+	world_pos_x = data["drop_area"]["left"] + appname_abs_offset_x
+	world_pos_y = data["drop_area"]["top"] + appname_abs_offset_y
+	data["drop_area_abs"]["left"] = world_pos_x
+	data["drop_area_abs"]["top"] = world_pos_y
+		
 def run_all(actions, data):
 	if data["use_paint"] == True:
 		handle = getWindowByTitle("Paint", False)
 	else:
 		handle = getWindowByTitle("BlueStacks", False)
-	updateScreen(handle[0])
-	calculate_offset_from_appname_ref(data)
-	calculate_absolute_button_pos(data)
-	myprint("found appname ref at : " + str(data["appname_world_ref"]),2)
-	cur_screen = get_current_screen_name(data)
-	myprint("current screen name = " + cur_screen)
-	#moveMouse(*data["button_abs_coords"]["card3"])
-	#takeScreenshot(handle[0])
+	
+	if "takeScreenshot" in actions:
+		takeScreenshot(handle[0])
+	
+	if "update_screen" in actions:
+		updateScreen(handle[0])
+	
+	if "init" in actions:
+		calculate_offset_from_appname_ref(data)
+		calculate_absolute_button_pos(data)
+		myprint("found appname ref at : " + str(data["appname_world_ref"]),2)
+		
+	if "find_screen" in actions:
+		cur_screen = get_current_screen_name(data)
+		myprint("current screen name = " + cur_screen,2)
+		
+		if "start_battle" in actions:
+			if cur_screen == "homescreen":
+				click(*data["button_abs_coords"]["battle"])
+				sleep(3)
+				updateScreen(handle[0])
+				cur_screen = get_current_screen_name(data)
+				myprint("battle should be starting, current screen : " + str(cur_screen))
+				
+	if "test_play_area" in actions:
+		for x in range(1):
+			for y in range(1):
+				#board_x, board_y = board_coord_to_mousepos(data, x, y)
+				moveMouse(data["drop_area_abs"]["left"], data["drop_area_abs"]["top"])
+				#moveMouse(data["button_abs_coords"]["card2"][0], data["button_abs_coords"]["card2"][1])
+				#moveMouse(board_x, board_y)
+				sleep(2)
+	
+	if "play" in actions:
+		max_game = 4
+		num_game = 0
+		wait_card = 0
+		cur_time = datetime.datetime.now()
+		prev_time = cur_time
+		while num_game < max_game:
+			updateScreen(handle[0])
+			cur_screen = get_current_screen_name(data)
+			if cur_screen == "homescreen":
+				click(*data["button_abs_coords"]["battle"])
+				sleep(3)
+			elif cur_screen == "victoryscreen":
+				num_game += 1
+				click(*data["button_abs_coords"]["victory"])
+				sleep(3)
+			elif cur_screen == "battlescreen":
+				deltat = (cur_time - prev_time).seconds
+				myprint("deltat = {dt}, wait_card = {wt}".format(dt=deltat, wt=wait_card))
+				wait_card -= deltat
+				if wait_card <= 0:
+					click(*data["button_abs_coords"]["card0"])
+					sleep(0.1)
+					# front of my right tower
+					default_x = 15
+					default_y = 6
+					default_x, default_y = board_coord_to_mousepos(data, default_x, default_y)
+					click(default_x, default_y)
+					wait_card = 5.0
+					
+			prev_time = cur_time
+			cur_time = datetime.datetime.now()
+				
 		
 if __name__ == '__main__':
 	
 	run_all([
+			#"takeScreenshot",
+			"update_screen",
+			"init",
+			"find_screen",
+			#"test_play_area",
+			#"start_battle",
+			"play",
 			"none" # put this here so I don't have to add , when I change list size.
 		],
 		{
-			"use_paint" : True,
+			"use_paint" : False,
 			"ref_img" : {
 				"appname" : os.path.join(DATA_FOLDER, "ref", "appname.png")
 			},
@@ -318,9 +415,9 @@ if __name__ == '__main__':
 				"victoryscreen" : (673,631)
 			},
 			"screen_colors" : {
-				"homescreen" : [255,208,83], # color of the pixel at button_coords/homescreen
-				"battlescreen" : [167,135,101],
-				"victoryscreen" : [104,187,255]
+				"homescreen" : [83,208,255], # color of the pixel at button_coords/homescreen (GRB)
+				"battlescreen" : [101,135,166],
+				"victoryscreen" : [255,187,105]
 			},
 			"game_area" : {
 				"top":31,
@@ -329,9 +426,9 @@ if __name__ == '__main__':
 				"height":696
 			},
 			"drop_area" : {
-				"top":340,
-				"left":452,
-				"width":333,
+				"top":348,
+				"left":520,
+				"width":318,
 				"height":210
 			},
 			"grid_size" : (18,15)
