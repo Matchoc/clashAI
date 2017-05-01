@@ -1,10 +1,7 @@
 todo:
-- Fix detect of victory, color of button change ever so slightly by the arena. Use "close enough" ?
-- delta time.seconds doesn't give me fraction... use millisecond ?
 
 - Advanced :
    - determine card in hand
-   - Calculate remaining mana
    - Calculate arena time
    - Determine ennemy/allied position
    - Determine ennemy/allied types
@@ -12,6 +9,7 @@ todo:
    - Calculate tower health
 
 Really Advanced :
+   - Detect chest status (daily, crown, won chest). Start unlocks and click to download cards during the day !
    - Robot reward system training.
 
 done :
@@ -21,3 +19,6 @@ done :
    - check for game end
    - click "ok"
    - start next battle
+- Fix detect of victory, color of button change ever so slightly by the arena. Use "close enough" ?
+- delta time.seconds doesn't give me fraction... use millisecond ?
+   - Calculate remaining mana

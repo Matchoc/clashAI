@@ -33,6 +33,7 @@ DATA_FOLDER = "data"
 RED = 2
 GREEN = 1
 BLUE = 0
+MAX_COLOR_DIFF = 5 # 0 to 255
 PRINT_LEVEL=0
 def myprint(msg, level=0):
 	if (level >= PRINT_LEVEL):
@@ -200,11 +201,11 @@ def toPixIndex(coord, w):
 # =============================================================================
 # GAME LOGIC
 def get_current_screen_name(data):
-	homescreen_coord = (data["button_abs_coords"]["homescreen"][0] - gScreenOffsetL, data["button_abs_coords"]["homescreen"][1] - gScreenOffsetT)
+	homescreen_coord = data["button_correct_coords"]["homescreen"]
 	homescreen_color = data["screen_colors"]["homescreen"]
-	battlescreen_coord = (data["button_abs_coords"]["battlescreen"][0] - gScreenOffsetL, data["button_abs_coords"]["battlescreen"][1] - gScreenOffsetT)
+	battlescreen_coord = data["button_correct_coords"]["battlescreen"]
 	battlescreen_color = data["screen_colors"]["battlescreen"]
-	victoryscreen_coord = (data["button_abs_coords"]["victoryscreen"][0] - gScreenOffsetL, data["button_abs_coords"]["victoryscreen"][1] - gScreenOffsetT)
+	victoryscreen_coord = data["button_correct_coords"]["victoryscreen"]
 	victoryscreen_color = data["screen_colors"]["victoryscreen"]
 	
 	homescreen_index = toPixIndex(homescreen_coord, gScreenWidth)
@@ -220,11 +221,15 @@ def get_current_screen_name(data):
 		battle=screen_battle_val, x3=victoryscreen_coord[0], y3=victoryscreen_coord[1], victory=screen_victory_val
 	), 2)
 	
-	if screen_home_val[RED] == homescreen_color[RED] and screen_home_val[BLUE] == homescreen_color[BLUE] and screen_home_val[GREEN] == homescreen_color[GREEN]:
+	diffhome = screen_home_val[RED] - homescreen_color[RED] + screen_home_val[BLUE] - homescreen_color[BLUE] + screen_home_val[GREEN] - homescreen_color[GREEN]
+	diffbattle = screen_battle_val[RED] - battlescreen_color[RED] + screen_battle_val[BLUE] - battlescreen_color[BLUE] + screen_battle_val[GREEN] - battlescreen_color[GREEN]
+	diffvictory = screen_victory_val[RED] - victoryscreen_color[RED] + screen_victory_val[BLUE] - victoryscreen_color[BLUE] + screen_victory_val[GREEN] - victoryscreen_color[GREEN]
+	
+	if abs(diffhome) < MAX_COLOR_DIFF:
 		return "homescreen"
-	elif screen_battle_val[RED] == battlescreen_color[RED] and screen_battle_val[BLUE] == battlescreen_color[BLUE] and screen_battle_val[GREEN] == battlescreen_color[GREEN]:
+	elif abs(diffbattle) < MAX_COLOR_DIFF:
 		return "battlescreen"
-	elif screen_victory_val[RED] == victoryscreen_color[RED] and screen_victory_val[BLUE] == victoryscreen_color[BLUE] and screen_victory_val[GREEN] == victoryscreen_color[GREEN]:
+	elif abs(diffvictory) < MAX_COLOR_DIFF:
 		return "victoryscreen"
 	else:
 		myprint("Error: Could not identify current screen !", 5)
@@ -312,6 +317,26 @@ def calculate_absolute_button_pos(data):
 	world_pos_y = data["drop_area"]["top"] + appname_abs_offset_y
 	data["drop_area_abs"]["left"] = world_pos_x
 	data["drop_area_abs"]["top"] = world_pos_y
+	
+def calculate_corrected_button_pos(data):
+	data["button_correct_coords"] = {}
+	for button_name in data["button_abs_coords"]:
+		corrected_coord = (data["button_abs_coords"][button_name][0] - gScreenOffsetL, data["button_abs_coords"][button_name][1] - gScreenOffsetT)
+		data["button_correct_coords"][button_name] = corrected_coord
+		
+def calculate_current_energy(data):
+	data["frame_data"]["current_energy"] = 0
+	energy_color = data["screen_colors"]["energybar"]
+	for i in range(11):
+		coord_name = "energy" + str(i)
+		coord = data["button_correct_coords"][coord_name]
+		coord_index = toPixIndex(coord, gScreenWidth)
+		coord_val = gScreen[coord_index]
+		diffcolor = energy_color[RED] - coord_val[RED] + energy_color[BLUE] - coord_val[BLUE] + energy_color[GREEN] - coord_val[GREEN]
+		if abs(diffcolor) > MAX_COLOR_DIFF:
+			break
+	
+	data["frame_data"]["current_energy"] = i-1
 		
 def run_all(actions, data):
 	if data["use_paint"] == True:
@@ -326,8 +351,10 @@ def run_all(actions, data):
 		updateScreen(handle[0])
 	
 	if "init" in actions:
+		data["frame_data"] = {}
 		calculate_offset_from_appname_ref(data)
 		calculate_absolute_button_pos(data)
+		calculate_corrected_button_pos(data)
 		myprint("found appname ref at : " + str(data["appname_world_ref"]),2)
 		
 	if "find_screen" in actions:
@@ -350,6 +377,10 @@ def run_all(actions, data):
 				#moveMouse(data["button_abs_coords"]["card2"][0], data["button_abs_coords"]["card2"][1])
 				#moveMouse(board_x, board_y)
 				sleep(2)
+				
+	if "test_energy" in actions:
+		calculate_current_energy(data)
+		myprint("current energy : " + str(data["frame_data"]["current_energy"]))
 	
 	if "play" in actions:
 		max_game = 4
@@ -365,10 +396,10 @@ def run_all(actions, data):
 				sleep(3)
 			elif cur_screen == "victoryscreen":
 				num_game += 1
-				click(*data["button_abs_coords"]["victory"])
+				click(*data["button_abs_coords"]["finish"])
 				sleep(3)
 			elif cur_screen == "battlescreen":
-				deltat = (cur_time - prev_time).seconds
+				deltat = (cur_time - prev_time).total_seconds()
 				myprint("deltat = {dt}, wait_card = {wt}".format(dt=deltat, wt=wait_card))
 				wait_card -= deltat
 				if wait_card <= 0:
@@ -393,12 +424,13 @@ if __name__ == '__main__':
 			"init",
 			"find_screen",
 			#"test_play_area",
+			"test_energy",
 			#"start_battle",
-			"play",
+			#"play",
 			"none" # put this here so I don't have to add , when I change list size.
 		],
 		{
-			"use_paint" : False,
+			"use_paint" : True,
 			"ref_img" : {
 				"appname" : os.path.join(DATA_FOLDER, "ref", "appname.png")
 			},
@@ -412,12 +444,25 @@ if __name__ == '__main__':
 				"appname" : (245,3),
 				"homescreen" : (683,453),
 				"battlescreen" : (711,598),
-				"victoryscreen" : (673,631)
+				"victoryscreen" : (673,631),
+				"energy0" : (588,706),
+				"energy1" : (608,706),
+				"energy2" : (634,706),
+				"energy3" : (658,706),
+				"energy4" : (687,706),
+				"energy5" : (711,706),
+				"energy6" : (738,706),
+				"energy7" : (766,706),
+				"energy8" : (794,706),
+				"energy9" : (822,706),
+				"energy10" : (848,706)
+				
 			},
 			"screen_colors" : {
 				"homescreen" : [83,208,255], # color of the pixel at button_coords/homescreen (GRB)
 				"battlescreen" : [101,135,166],
-				"victoryscreen" : [255,187,105]
+				"victoryscreen" : [255,187,105],
+				"energybar" : [244,136,240]
 			},
 			"game_area" : {
 				"top":31,
