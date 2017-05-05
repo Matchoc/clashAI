@@ -1,4 +1,7 @@
 todo:
+- windows size is variable depending on the sidebar being present or not
+   - need to calculate aspect ratio if I want to keep using absolute references to be fast
+   - need to detect if sidebar is there or not !
 
 - Advanced :
    - determine card in hand

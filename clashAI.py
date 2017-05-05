@@ -276,6 +276,7 @@ def searchCoordInScreen(pixelToFind, w, h, hasAlpha):
 				coord[0] += int(w / 2) + gScreenOffsetL
 				coord[1] += int(h / 2) + gScreenOffsetT
 				return coord
+				
 	return None
 
 def convert_RGB_to_BGR(img):
@@ -292,31 +293,52 @@ def board_coord_to_mousepos(data, a, b):
 		dimx=square_dim_x, dimy=square_dim_y, va=a, vb=b, aleft=data["drop_area_abs"]["left"], atop=data["drop_area_abs"]["top"], fx=pos_x, fy=pos_y))
 	return int(pos_x), int(pos_y)
 	
-def calculate_offset_from_appname_ref(data):
-	im = Image.open(data["ref_img"]["appname"])
+def search_image(path):
+	im = Image.open(path)
 	width, height = im.size
 	btnpixeldata = list(im.getdata())
 	hasAlpha = im.mode == "RGBA"
 	btnpixeldata = convert_RGB_to_BGR(btnpixeldata)
 	coord = searchCoordInScreen(btnpixeldata, width, height, hasAlpha)
-	coord[0] -= int(width/2)
-	coord[1] -= int(height/2)
-	data["appname_world_ref"] = coord
+	if coord is not None:
+		coord[0] -= int(width/2)
+		coord[1] -= int(height/2)
+	return coord
+	
+def calculate_offset_from_appname_ref(data):
+	coord = search_image(data["ref_img"]["settingbtn"])
+	data["appname_key"] = "settingbtn"
+	if coord is None:
+		coord = search_image(data["ref_img"]["settingbtn_noside"])
+		if coord is None:
+			myprint("ERROR: Screen not found from ref : " + data["ref_img"]["settingbtn"] + " or " + data["ref_img"]["settingbtn_noside"], 3)
+		data["appname_key"] = "settingbtn_noside"
+		
+		coord2 = search_image(data["ref_img"]["shop_noside"])
+		expected_x = data["button_coords"]["settingbtn"][0] - data["button_coords"]["shop_side"][0]
+		expected_y = data["button_coords"]["settingbtn"][1] - data["button_coords"]["shop_side"][1]
+		actual_x = data["button_coords"]["settingbtn_noside"][0] - data["button_coords"]["shop_noside"][0]
+		actual_y = data["button_coords"]["settingbtn_noside"][1] - data["button_coords"]["shop_noside"][1]
+		data["world_aspect"] = (actual_x / expected_x, actual_y / expected_y)
+	else:
+		data["world_aspect"] = (1,1)
+		
+	data["world_ref"] = coord
 	
 def calculate_absolute_button_pos(data):
 	data["button_abs_coords"] = {}
 	data["drop_area_abs"] = {}
-	appname_abs_offset_x = data["appname_world_ref"][0] - data["button_coords"]["appname"][0]
-	appname_abs_offset_y = data["appname_world_ref"][1] - data["button_coords"]["appname"][1]
+	appname_abs_offset_x = data["world_ref"][0] - data["button_coords"][data["appname_key"]][0]
+	appname_abs_offset_y = data["world_ref"][1] - data["button_coords"][data["appname_key"]][1]
 	for button_name in data["button_coords"]:
-		world_pos_x = data["button_coords"][button_name][0] + appname_abs_offset_x
-		world_pos_y = data["button_coords"][button_name][1] + appname_abs_offset_y
-		data["button_abs_coords"][button_name] = (world_pos_x, world_pos_y)
+		world_pos_x = (data["button_coords"][button_name][0] * data["world_aspect"][0]) + appname_abs_offset_x
+		world_pos_y = (data["button_coords"][button_name][1] * data["world_aspect"][1]) + appname_abs_offset_y
+		data["button_abs_coords"][button_name] = (int(world_pos_x), int(world_pos_y))
 		
-	world_pos_x = data["drop_area"]["left"] + appname_abs_offset_x
-	world_pos_y = data["drop_area"]["top"] + appname_abs_offset_y
-	data["drop_area_abs"]["left"] = world_pos_x
-	data["drop_area_abs"]["top"] = world_pos_y
+	world_pos_x = (data["drop_area"]["left"] * data["world_aspect"][0]) + appname_abs_offset_x
+	world_pos_y = (data["drop_area"]["top"] * data["world_aspect"][1]) + appname_abs_offset_y
+	data["drop_area_abs"]["left"] = int(world_pos_x)
+	data["drop_area_abs"]["top"] = int(world_pos_y)
 	
 def calculate_corrected_button_pos(data):
 	data["button_correct_coords"] = {}
@@ -343,6 +365,9 @@ def run_all(actions, data):
 		handle = getWindowByTitle("Paint", False)
 	else:
 		handle = getWindowByTitle("BlueStacks", False)
+		
+	if handle is None or handle[0] is None:
+		myprint("Could not find window !", 5)
 	
 	if "takeScreenshot" in actions:
 		takeScreenshot(handle[0])
@@ -355,7 +380,9 @@ def run_all(actions, data):
 		calculate_offset_from_appname_ref(data)
 		calculate_absolute_button_pos(data)
 		calculate_corrected_button_pos(data)
-		myprint("found appname ref at : " + str(data["appname_world_ref"]),2)
+		a = (data["world_ref"][0] - gScreenOffsetL, data["world_ref"][1] - gScreenOffsetT)
+		
+		myprint("found world ref at : " + str(a) + " with : " + data["appname_key"] + " aspect ratio " + str(data["world_aspect"]),2)
 		
 	if "find_screen" in actions:
 		cur_screen = get_current_screen_name(data)
@@ -377,6 +404,9 @@ def run_all(actions, data):
 				#moveMouse(data["button_abs_coords"]["card2"][0], data["button_abs_coords"]["card2"][1])
 				#moveMouse(board_x, board_y)
 				sleep(2)
+				
+	if "test_battle_button" in actions:
+		moveMouse(*data["button_abs_coords"]["battle"])
 				
 	if "test_energy" in actions:
 		calculate_current_energy(data)
@@ -424,7 +454,8 @@ if __name__ == '__main__':
 			"init",
 			"find_screen",
 			#"test_play_area",
-			"test_energy",
+			"test_battle_button",
+			#"test_energy",
 			#"start_battle",
 			#"play",
 			"none" # put this here so I don't have to add , when I change list size.
@@ -432,7 +463,11 @@ if __name__ == '__main__':
 		{
 			"use_paint" : True,
 			"ref_img" : {
-				"appname" : os.path.join(DATA_FOLDER, "ref", "appname.png")
+				"appname" : os.path.join(DATA_FOLDER, "ref", "appname.png"),
+				"settingbtn" : os.path.join(DATA_FOLDER, "ref", "settingbtn.png"),
+				"settingbtn_noside" : os.path.join(DATA_FOLDER, "ref", "settingbtn_noside.png"),
+				"shop_side" : os.path.join(DATA_FOLDER, "ref", "shop_side.png"),
+				"shop_noside" : os.path.join(DATA_FOLDER, "ref", "shop_noside.png")
 			},
 			"button_coords" : {
 				"battle" : (677,477),
@@ -442,6 +477,10 @@ if __name__ == '__main__':
 				"card2" : (750,650),
 				"card3" : (825,650),
 				"appname" : (245,3),
+				"settingbtn" : (831,81),
+				"settingbtn_noside" : (772,81),
+				"shop_side" : (493,668),
+				"shop_noside" : (442,668),
 				"homescreen" : (683,453),
 				"battlescreen" : (711,598),
 				"victoryscreen" : (673,631),
@@ -455,14 +494,16 @@ if __name__ == '__main__':
 				"energy7" : (766,706),
 				"energy8" : (794,706),
 				"energy9" : (822,706),
-				"energy10" : (848,706)
+				"energy10" : (848,706),
+				"stacksidebar" : (29,61)
 				
 			},
 			"screen_colors" : {
 				"homescreen" : [83,208,255], # color of the pixel at button_coords/homescreen (GRB)
 				"battlescreen" : [101,135,166],
 				"victoryscreen" : [255,187,105],
-				"energybar" : [244,136,240]
+				"energybar" : [244,136,240],
+				"stacksidebar" : [68,59,60]
 			},
 			"game_area" : {
 				"top":31,
