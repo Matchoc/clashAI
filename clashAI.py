@@ -68,7 +68,7 @@ gScreenOffsetL = 0
 gScreenWidth = 0
 gScreenHeight = 0
 def updateScreen(hwnd = None, wait_focus=True):
-	starttime = datetime.datetime.now()
+	a = ScopedTimer("updateScreen")
 	global gScreen
 	global gScreenAlpha
 	global gScreenOffsetT
@@ -111,8 +111,6 @@ def updateScreen(hwnd = None, wait_focus=True):
 	gScreenAlpha = gScreen
 	
 	myprint("screenWidth : " + str(gScreenWidth) + ", screenHeight : " + str(gScreenHeight) + ", offsetL : " + str(gScreenOffsetL)  + ", offsetT : " + str(gScreenOffsetT))
-	delta = datetime.datetime.now() - starttime
-	myprint("updateScreen took " + str(delta),3)	
 
 def gScreenToNumpy():
 	global gScreenNumpy
@@ -157,6 +155,15 @@ def takeScreenshot(hwnd = None):
 	
 # =============================================================================
 # UTIL METHOD
+class ScopedTimer:
+	def __init__(self, name):
+		self.starttime = datetime.datetime.now()
+		self.name = name
+		
+	def __del__(self):
+		delta = datetime.datetime.now() - self.starttime
+		myprint(str(self.name) + " : " + str(delta),3)
+
 def toXYCoord(pixIndex, w):
 	y = int(pixIndex / w)
 	floaty = pixIndex / w
@@ -237,6 +244,7 @@ def get_current_screen_name(data):
 	
 
 def searchCoordInScreen(pixelToFind, w, h, hasAlpha):
+	a = ScopedTimer("searchCoordInScreen")
 	for pixIndex in range(len(gScreen)):
 		pix = gScreen[pixIndex]
 		if pix[0] == pixelToFind[0][0] and pix[1] == pixelToFind[0][1] and pix[2] == pixelToFind[0][2]:
@@ -328,11 +336,11 @@ def calculate_offset_from_appname_ref(data):
 def calculate_absolute_button_pos(data):
 	data["button_abs_coords"] = {}
 	data["drop_area_abs"] = {}
-	appname_abs_offset_x = data["world_ref"][0] - data["button_coords"][data["appname_key"]][0]
-	appname_abs_offset_y = data["world_ref"][1] - data["button_coords"][data["appname_key"]][1]
+	appname_abs_offset_x = data["world_ref"][0] - data["button_coords"]["settingbtn"][0]
+	appname_abs_offset_y = data["world_ref"][1] - data["button_coords"]["settingbtn"][1]
 	for button_name in data["button_coords"]:
-		world_pos_x = (data["button_coords"][button_name][0] * data["world_aspect"][0]) + appname_abs_offset_x
-		world_pos_y = (data["button_coords"][button_name][1] * data["world_aspect"][1]) + appname_abs_offset_y
+		world_pos_x = (data["button_coords"][button_name][0] + appname_abs_offset_x)# * data["world_aspect"][0]
+		world_pos_y = (data["button_coords"][button_name][1] + appname_abs_offset_y)# * data["world_aspect"][1]
 		data["button_abs_coords"][button_name] = (int(world_pos_x), int(world_pos_y))
 		
 	world_pos_x = (data["drop_area"]["left"] * data["world_aspect"][0]) + appname_abs_offset_x
@@ -370,7 +378,10 @@ def run_all(actions, data):
 		myprint("Could not find window !", 5)
 	
 	if "takeScreenshot" in actions:
-		takeScreenshot(handle[0])
+		while True:
+			updateScreen(handle[0])
+			takeScreenshot(handle[0])
+			sleep(10)
 	
 	if "update_screen" in actions:
 		updateScreen(handle[0])
@@ -397,20 +408,29 @@ def run_all(actions, data):
 				myprint("battle should be starting, current screen : " + str(cur_screen))
 				
 	if "test_play_area" in actions:
-		for x in range(1):
-			for y in range(1):
-				#board_x, board_y = board_coord_to_mousepos(data, x, y)
-				moveMouse(data["drop_area_abs"]["left"], data["drop_area_abs"]["top"])
+		sleep(5)
+		for x in range(15):
+			for y in range(15):
+				board_x, board_y = board_coord_to_mousepos(data, x, y)
+				#moveMouse(data["drop_area_abs"]["left"], data["drop_area_abs"]["top"])
 				#moveMouse(data["button_abs_coords"]["card2"][0], data["button_abs_coords"]["card2"][1])
-				#moveMouse(board_x, board_y)
-				sleep(2)
+				moveMouse(board_x, board_y)
+				sleep(0.5)
 				
 	if "test_battle_button" in actions:
+		moveMouse(*data["button_abs_coords"]["settingbtn"])
+		sleep(4)
 		moveMouse(*data["button_abs_coords"]["battle"])
+		sleep(4)
+		moveMouse(*data["button_abs_coords"]["shop_side"])
 				
 	if "test_energy" in actions:
-		calculate_current_energy(data)
-		myprint("current energy : " + str(data["frame_data"]["current_energy"]))
+		while True:
+			updateScreen(handle[0])
+			cur_screen = get_current_screen_name(data)
+			calculate_current_energy(data)
+			myprint("current energy : " + str(data["frame_data"]["current_energy"]))
+			sleep(2)
 	
 	if "play" in actions:
 		max_game = 4
@@ -449,19 +469,19 @@ def run_all(actions, data):
 if __name__ == '__main__':
 	
 	run_all([
-			#"takeScreenshot",
-			"update_screen",
-			"init",
-			"find_screen",
+			"takeScreenshot",
+			#"update_screen",
+			#"init",
+			#"find_screen",
 			#"test_play_area",
-			"test_battle_button",
+			#"test_battle_button",
 			#"test_energy",
 			#"start_battle",
 			#"play",
 			"none" # put this here so I don't have to add , when I change list size.
 		],
 		{
-			"use_paint" : True,
+			"use_paint" : False,
 			"ref_img" : {
 				"appname" : os.path.join(DATA_FOLDER, "ref", "appname.png"),
 				"settingbtn" : os.path.join(DATA_FOLDER, "ref", "settingbtn.png"),
