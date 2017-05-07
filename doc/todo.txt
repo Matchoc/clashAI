@@ -1,10 +1,6 @@
 todo:
-- windows size is variable depending on the sidebar being present or not
-   - need to calculate aspect ratio if I want to keep using absolute references to be fast
-   - need to detect if sidebar is there or not !
 
 - Advanced :
-   - determine card in hand
    - Calculate arena time
    - Determine ennemy/allied position
    - Determine ennemy/allied types
@@ -16,6 +12,7 @@ Really Advanced :
    - Robot reward system training.
 
 done :
+   - determine card in hand (not sure it'll work when sidebar is there tough :/)
 - Run basic sequence 
    - start battle
    - play some cards
@@ -25,3 +22,7 @@ done :
 - Fix detect of victory, color of button change ever so slightly by the arena. Use "close enough" ?
 - delta time.seconds doesn't give me fraction... use millisecond ?
    - Calculate remaining mana
+- windows size is variable depending on the sidebar being present or not (not perfect but works for now...)
+   - need to calculate aspect ratio if I want to keep using absolute references to be fast
+   - need to detect if sidebar is there or not !
+- speed up card detection, takes 2 to 12 seconds right now T_T (reduced lookup area.... still a bit slow imho 0.3 to 1.5sec per card)

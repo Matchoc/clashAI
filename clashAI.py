@@ -33,7 +33,7 @@ DATA_FOLDER = "data"
 RED = 2
 GREEN = 1
 BLUE = 0
-MAX_COLOR_DIFF = 5 # 0 to 255
+MAX_COLOR_DIFF = 15 # 0 to 255
 PRINT_LEVEL=0
 def myprint(msg, level=0):
 	if (level >= PRINT_LEVEL):
@@ -233,57 +233,71 @@ def get_current_screen_name(data):
 	diffvictory = screen_victory_val[RED] - victoryscreen_color[RED] + screen_victory_val[BLUE] - victoryscreen_color[BLUE] + screen_victory_val[GREEN] - victoryscreen_color[GREEN]
 	
 	if abs(diffhome) < MAX_COLOR_DIFF:
+		data["frame_data"]["current_screen"] = "homescreen"
 		return "homescreen"
 	elif abs(diffbattle) < MAX_COLOR_DIFF:
+		data["frame_data"]["current_screen"] = "battlescreen"
 		return "battlescreen"
 	elif abs(diffvictory) < MAX_COLOR_DIFF:
+		data["frame_data"]["current_screen"] = "victoryscreen"
 		return "victoryscreen"
 	else:
 		myprint("Error: Could not identify current screen !", 5)
 		return None
 	
 
-def searchCoordInScreen(pixelToFind, w, h, hasAlpha):
+def searchCoordInScreen(pixelToFind, x, y, w, h, gwidth, gheight, hasAlpha):
 	a = ScopedTimer("searchCoordInScreen")
-	for pixIndex in range(len(gScreen)):
-		pix = gScreen[pixIndex]
-		if pix[0] == pixelToFind[0][0] and pix[1] == pixelToFind[0][1] and pix[2] == pixelToFind[0][2]:
-			match = True
-			row = 0
-			while(match and row < 1):
-				coordscreen = toXYCoord(pixIndex, gScreenWidth)
-				coordscreen[0] += row
-				screenIndex = toPixIndex(coordscreen, gScreenWidth)
-				if screenIndex > len(gScreen):
-					match = False
-					break;
-				
-				coordimg = (row, 0)
-				imgIndex = toPixIndex(coordimg, w)
-				
-				screenline = []
-				if hasAlpha:
-					screenline = gScreenAlpha[screenIndex:screenIndex+w]
-				else:
-					screenline = gScreen[screenIndex:screenIndex+w]
-				subimgline = pixelToFind[imgIndex:imgIndex+w]
-				screenline = screenline.tolist()
-				
-				for i in range(len(screenline)):
-					if subimgline[i][0] != screenline[i][0] or subimgline[i][1] != screenline[i][1] or subimgline[i][2] != screenline[i][2]:
+	#startindex = toPixIndex((x, y), gScreenWidth)
+	#endindex = toPixIndex((x + w, y + h), gScreenWidth)
+	if gwidth == -1 or (gwidth+x) > gScreenWidth:
+		gwidth = gScreenWidth-x
+	if gheight == -1 or (gheight+y) > gScreenHeight:
+		gheight = gScreenHeight-y
+	for refy in range(y, y + gheight):
+		for refx in range(x, x + gwidth):
+			pixIndex = toPixIndex((refx, refy), gScreenWidth)
+			pix = gScreen[pixIndex]
+			diff = pix[0] - pixelToFind[0][0] + pix[1] - pixelToFind[0][1] + pix[2] - pixelToFind[0][2]
+			if diff <= MAX_COLOR_DIFF:
+				match = True
+				row = 0
+				while(match and row < 1):
+					coordscreen = toXYCoord(pixIndex, gScreenWidth)
+					coordscreen[0] += row
+					screenIndex = toPixIndex(coordscreen, gScreenWidth)
+					if screenIndex > len(gScreen):
 						match = False
-						break
-				
-				#intersectpix = set(subimgline).intersection(screenline)
-				#myprint("Found intersection line " + str(row) + " : " + str(intersectpix))
-				#if screenline != subimgline:
-				#	match = False
-				row += 1
-			if match == True:
-				coord = toXYCoord(pixIndex, gScreenWidth)
-				coord[0] += int(w / 2) + gScreenOffsetL
-				coord[1] += int(h / 2) + gScreenOffsetT
-				return coord
+						break;
+					
+					coordimg = (row, 0)
+					imgIndex = toPixIndex(coordimg, w)
+					
+					screenline = []
+					if hasAlpha:
+						screenline = gScreenAlpha[screenIndex:screenIndex+w]
+					else:
+						screenline = gScreen[screenIndex:screenIndex+w]
+					subimgline = pixelToFind[imgIndex:imgIndex+w]
+					screenline = screenline.tolist()
+					
+					for i in range(len(screenline)):
+						diff = subimgline[i][0] - screenline[i][0] + subimgline[i][1] - screenline[i][1] + subimgline[i][2] - screenline[i][2]
+						#myprint("diff " + str(diff))
+						if abs(diff) > MAX_COLOR_DIFF:
+							match = False
+							break
+					
+					#intersectpix = set(subimgline).intersection(screenline)
+					#myprint("Found intersection line " + str(row) + " : " + str(intersectpix))
+					#if screenline != subimgline:
+					#	match = False
+					row += 1
+				if match == True:
+					coord = toXYCoord(pixIndex, gScreenWidth)
+					coord[0] += int(w / 2) + gScreenOffsetL
+					coord[1] += int(h / 2) + gScreenOffsetT
+					return coord
 				
 	return None
 
@@ -301,13 +315,14 @@ def board_coord_to_mousepos(data, a, b):
 		dimx=square_dim_x, dimy=square_dim_y, va=a, vb=b, aleft=data["drop_area_abs"]["left"], atop=data["drop_area_abs"]["top"], fx=pos_x, fy=pos_y))
 	return int(pos_x), int(pos_y)
 	
-def search_image(path):
+def search_image(path, x=0, y=0, w=-1, h=-1):
 	im = Image.open(path)
 	width, height = im.size
 	btnpixeldata = list(im.getdata())
 	hasAlpha = im.mode == "RGBA"
 	btnpixeldata = convert_RGB_to_BGR(btnpixeldata)
-	coord = searchCoordInScreen(btnpixeldata, width, height, hasAlpha)
+	myprint("search_image " + path)
+	coord = searchCoordInScreen(btnpixeldata, x, y, width, height, w, h, hasAlpha)
 	if coord is not None:
 		coord[0] -= int(width/2)
 		coord[1] -= int(height/2)
@@ -367,6 +382,34 @@ def calculate_current_energy(data):
 			break
 	
 	data["frame_data"]["current_energy"] = i-1
+	
+def calculate_current_cards_in_hand(data):
+	a = ScopedTimer("calculate_current_cards_in_hand")
+	data["frame_data"]["hand"] = {
+		"card0" : "",
+		"card1" : "",
+		"card2" : "",
+		"card3" : ""
+	}
+	myprint("corrected_button_coord = " + str(data["button_abs_coords"]))
+	
+	startsearch = data["button_correct_coords"]["deckstarcorner"]
+	width = data["button_correct_coords"]["card3"][0] + 100
+	height = data["button_correct_coords"]["card3"][1] + 100
+	
+	for card in data["ref_img"]["cards"]:
+		coord = search_image(data["ref_img"]["cards"][card], startsearch[0], startsearch[1], width, height)
+		if coord is not None:
+			if coord[0] <= data["button_abs_coords"]["card0"][0]:
+				data["frame_data"]["hand"]["card0"] = card
+			elif coord[0] <= data["button_abs_coords"]["card1"][0]:
+				data["frame_data"]["hand"]["card1"] = card
+			elif coord[0] <= data["button_abs_coords"]["card2"][0]:
+				data["frame_data"]["hand"]["card2"] = card
+			elif coord[0] <= data["button_abs_coords"]["card3"][0]:
+				data["frame_data"]["hand"]["card3"] = card
+			else:
+				myprint("ERROR : Invalid coord, card found at : " + str(coord) + " for card " + card, 3)
 		
 def run_all(actions, data):
 	if data["use_paint"] == True:
@@ -427,10 +470,17 @@ def run_all(actions, data):
 	if "test_energy" in actions:
 		while True:
 			updateScreen(handle[0])
-			cur_screen = get_current_screen_name(data)
+			#cur_screen = get_current_screen_name(data)
 			calculate_current_energy(data)
 			myprint("current energy : " + str(data["frame_data"]["current_energy"]))
 			sleep(2)
+			
+	if "test_cards" in actions:
+		while True:
+			updateScreen(handle[0])
+			calculate_current_cards_in_hand(data)
+			myprint("current hand : " + str(data["frame_data"]["hand"]),3)
+			sleep(5)
 	
 	if "play" in actions:
 		max_game = 4
@@ -441,6 +491,7 @@ def run_all(actions, data):
 		while num_game < max_game:
 			updateScreen(handle[0])
 			cur_screen = get_current_screen_name(data)
+			calculate_current_energy(data)
 			if cur_screen == "homescreen":
 				click(*data["button_abs_coords"]["battle"])
 				sleep(3)
@@ -469,25 +520,37 @@ def run_all(actions, data):
 if __name__ == '__main__':
 	
 	run_all([
-			"takeScreenshot",
-			#"update_screen",
-			#"init",
+			#"takeScreenshot",
+			"update_screen",
+			"init",
+			#"test_cards",
 			#"find_screen",
 			#"test_play_area",
 			#"test_battle_button",
 			#"test_energy",
 			#"start_battle",
-			#"play",
+			"play",
 			"none" # put this here so I don't have to add , when I change list size.
 		],
 		{
-			"use_paint" : False,
+			"use_paint" : True,
 			"ref_img" : {
 				"appname" : os.path.join(DATA_FOLDER, "ref", "appname.png"),
 				"settingbtn" : os.path.join(DATA_FOLDER, "ref", "settingbtn.png"),
 				"settingbtn_noside" : os.path.join(DATA_FOLDER, "ref", "settingbtn_noside.png"),
 				"shop_side" : os.path.join(DATA_FOLDER, "ref", "shop_side.png"),
-				"shop_noside" : os.path.join(DATA_FOLDER, "ref", "shop_noside.png")
+				"shop_noside" : os.path.join(DATA_FOLDER, "ref", "shop_noside.png"),
+				"cards" : {
+					"skelarmy" : os.path.join(DATA_FOLDER, "ref", "cardskelarmy.png"),
+					"archer" : os.path.join(DATA_FOLDER, "ref", "cardarcher.png"),
+					"balloon" : os.path.join(DATA_FOLDER, "ref", "cardballoon.png"),
+					"fireball" : os.path.join(DATA_FOLDER, "ref", "cardfireball.png"),
+					"giant" : os.path.join(DATA_FOLDER, "ref", "cardgiant.png"),
+					"goblinspear" : os.path.join(DATA_FOLDER, "ref", "cardgoblinspear.png"),
+					"minion" : os.path.join(DATA_FOLDER, "ref", "cardminion.png"),
+					"valkyrie" : os.path.join(DATA_FOLDER, "ref", "cardvalkyrie.png"),
+					"goblin" : os.path.join(DATA_FOLDER, "ref", "cardgoblin.png")
+				}
 			},
 			"button_coords" : {
 				"battle" : (677,477),
@@ -515,8 +578,8 @@ if __name__ == '__main__':
 				"energy8" : (794,706),
 				"energy9" : (822,706),
 				"energy10" : (848,706),
-				"stacksidebar" : (29,61)
-				
+				"stacksidebar" : (29,61),
+				"deckstarcorner" : (569,607)				
 			},
 			"screen_colors" : {
 				"homescreen" : [83,208,255], # color of the pixel at button_coords/homescreen (GRB)
