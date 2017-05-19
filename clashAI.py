@@ -410,6 +410,35 @@ def calculate_current_cards_in_hand(data):
 				data["frame_data"]["hand"]["card3"] = card
 			else:
 				myprint("ERROR : Invalid coord, card found at : " + str(coord) + " for card " + card, 3)
+				
+def calculate_arena_diff(data):
+	cur_arena = data["current_arena"]
+	
+	im = Image.open(data["ref_img"][cur_arena])
+	width, height = im.size
+	btnpixeldata = list(im.getdata())
+	hasAlpha = im.mode == "RGBA"
+	btnpixeldata = convert_RGB_to_BGR(btnpixeldata)
+	arena_offset_x = data["button_correct_coords"]["arena_top_left"][0]
+	arena_offset_y = data["button_correct_coords"]["arena_top_left"][1]
+	
+	# extract the arena picture from gScreen
+	myprint("screen width " + str(gScreenWidth) + " height " + str(gScreenHeight) + " len(gscreen) " + str(len(gScreen)))
+	arena_pic = gScreen.reshape(gScreenHeight, gScreenWidth, 4)
+	
+	arena_pic = arena_pic[arena_offset_y:arena_offset_y + height, arena_offset_x:arena_offset_x + width]
+	myprint("width " + str(width) + " height " + str(height) + " arena_offset_x " + str(arena_offset_x) + " arena_offset_y " + str(arena_offset_y))
+	arena_pic = arena_pic.reshape(width * height, 4)
+	
+	#test = [print(str(pref) + str(p)) for p, pref in zip(arena_pic,btnpixeldata)]
+	sub_img = [(p[0], p[1], p[2]) if abs(numpy.subtract(pref, p).sum()) > MAX_COLOR_DIFF else (0,0,0) for p, pref in zip(arena_pic,btnpixeldata)]
+	
+	a = numpy.array(sub_img)
+	a = a / 255
+	a = a.reshape(height, width, 3)
+	plt.imshow(a)
+	#<matplotlib.image.AxesImage object at 0x04123CD0>
+	plt.show()
 		
 def run_all(actions, data):
 	if data["use_paint"] == True:
@@ -437,6 +466,13 @@ def run_all(actions, data):
 		a = (data["world_ref"][0] - gScreenOffsetL, data["world_ref"][1] - gScreenOffsetT)
 		
 		myprint("found world ref at : " + str(a) + " with : " + data["appname_key"] + " aspect ratio " + str(data["world_aspect"]),2)
+		
+	if "wait_after_init" in actions:
+		sleep(8)
+		
+	if "test_screen_diff" in actions:
+		updateScreen(handle[0])
+		calculate_arena_diff(data)
 		
 	if "find_screen" in actions:
 		cur_screen = get_current_screen_name(data)
@@ -519,27 +555,44 @@ def run_all(actions, data):
 		
 if __name__ == '__main__':
 	
+	#handle = getWindowByTitle("Paint", False)
+	#updateScreen(handle[0])
+	
+	#a = gScreen
+	#a = a / 255
+	#a = a.reshape(gScreenHeight, gScreenWidth, 4)
+	#b = a[:,0:200,:]
+	
+	#plt.imshow(b)
+	#plt.show()
+	
+	#sys.exit()
+	
 	run_all([
 			#"takeScreenshot",
 			"update_screen",
 			"init",
+			"wait_after_init",
+			"test_screen_diff",
 			#"test_cards",
 			#"find_screen",
 			#"test_play_area",
 			#"test_battle_button",
 			#"test_energy",
 			#"start_battle",
-			"play",
+			#"play",
 			"none" # put this here so I don't have to add , when I change list size.
 		],
 		{
 			"use_paint" : True,
+			"current_arena": "arena_0", #could detect it eventually, for now should be ok
 			"ref_img" : {
 				"appname" : os.path.join(DATA_FOLDER, "ref", "appname.png"),
 				"settingbtn" : os.path.join(DATA_FOLDER, "ref", "settingbtn.png"),
 				"settingbtn_noside" : os.path.join(DATA_FOLDER, "ref", "settingbtn_noside.png"),
 				"shop_side" : os.path.join(DATA_FOLDER, "ref", "shop_side.png"),
 				"shop_noside" : os.path.join(DATA_FOLDER, "ref", "shop_noside.png"),
+				"arena_0" : os.path.join(DATA_FOLDER, "ref", "training_arena.png"), #training arena
 				"cards" : {
 					"skelarmy" : os.path.join(DATA_FOLDER, "ref", "cardskelarmy.png"),
 					"archer" : os.path.join(DATA_FOLDER, "ref", "cardarcher.png"),
@@ -579,7 +632,8 @@ if __name__ == '__main__':
 				"energy9" : (822,706),
 				"energy10" : (848,706),
 				"stacksidebar" : (29,61),
-				"deckstarcorner" : (569,607)				
+				"deckstarcorner" : (569,607),
+				"arena_top_left" : (481,32)
 			},
 			"screen_colors" : {
 				"homescreen" : [83,208,255], # color of the pixel at button_coords/homescreen (GRB)
