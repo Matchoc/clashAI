@@ -306,8 +306,8 @@ def convert_RGB_to_BGR(img):
 	return returnList
 	
 def board_coord_to_mousepos(data, a, b):
-	square_dim_x = data["drop_area"]["width"] / data["grid_size"][0]
-	square_dim_y = data["drop_area"]["height"] / data["grid_size"][1]
+	square_dim_x = data["drop_area"]["width"] / (data["grid_size"][0]-1)
+	square_dim_y = data["drop_area"]["height"] / (data["grid_size"][1]-1)
 	pos_x = data["drop_area_abs"]["left"] + (a * square_dim_x)
 	pos_y = data["drop_area_abs"]["top"] + (b * square_dim_y)
 	
@@ -330,22 +330,8 @@ def search_image(path, x=0, y=0, w=-1, h=-1):
 	
 def calculate_offset_from_appname_ref(data):
 	coord = search_image(data["ref_img"]["settingbtn"])
+	myprint("coord : " + str(coord),3)
 	data["appname_key"] = "settingbtn"
-	if coord is None:
-		coord = search_image(data["ref_img"]["settingbtn_noside"])
-		if coord is None:
-			myprint("ERROR: Screen not found from ref : " + data["ref_img"]["settingbtn"] + " or " + data["ref_img"]["settingbtn_noside"], 3)
-		data["appname_key"] = "settingbtn_noside"
-		
-		coord2 = search_image(data["ref_img"]["shop_noside"])
-		expected_x = data["button_coords"]["settingbtn"][0] - data["button_coords"]["shop_side"][0]
-		expected_y = data["button_coords"]["settingbtn"][1] - data["button_coords"]["shop_side"][1]
-		actual_x = data["button_coords"]["settingbtn_noside"][0] - data["button_coords"]["shop_noside"][0]
-		actual_y = data["button_coords"]["settingbtn_noside"][1] - data["button_coords"]["shop_noside"][1]
-		data["world_aspect"] = (actual_x / expected_x, actual_y / expected_y)
-	else:
-		data["world_aspect"] = (1,1)
-		
 	data["world_ref"] = coord
 	
 def calculate_absolute_button_pos(data):
@@ -354,12 +340,12 @@ def calculate_absolute_button_pos(data):
 	appname_abs_offset_x = data["world_ref"][0] - data["button_coords"]["settingbtn"][0]
 	appname_abs_offset_y = data["world_ref"][1] - data["button_coords"]["settingbtn"][1]
 	for button_name in data["button_coords"]:
-		world_pos_x = (data["button_coords"][button_name][0] + appname_abs_offset_x)# * data["world_aspect"][0]
-		world_pos_y = (data["button_coords"][button_name][1] + appname_abs_offset_y)# * data["world_aspect"][1]
+		world_pos_x = data["button_coords"][button_name][0] + appname_abs_offset_x
+		world_pos_y = data["button_coords"][button_name][1] + appname_abs_offset_y
 		data["button_abs_coords"][button_name] = (int(world_pos_x), int(world_pos_y))
 		
-	world_pos_x = (data["drop_area"]["left"] * data["world_aspect"][0]) + appname_abs_offset_x
-	world_pos_y = (data["drop_area"]["top"] * data["world_aspect"][1]) + appname_abs_offset_y
+	world_pos_x = data["drop_area"]["left"] + appname_abs_offset_x
+	world_pos_y = data["drop_area"]["top"] + appname_abs_offset_y
 	data["drop_area_abs"]["left"] = int(world_pos_x)
 	data["drop_area_abs"]["top"] = int(world_pos_y)
 	
@@ -430,8 +416,14 @@ def calculate_arena_diff(data):
 	myprint("width " + str(width) + " height " + str(height) + " arena_offset_x " + str(arena_offset_x) + " arena_offset_y " + str(arena_offset_y))
 	arena_pic = arena_pic.reshape(width * height, 4)
 	
-	#test = [print(str(pref) + str(p)) for p, pref in zip(arena_pic,btnpixeldata)]
-	sub_img = [(p[0], p[1], p[2]) if abs(numpy.subtract(pref, p).sum()) > MAX_COLOR_DIFF else (0,0,0) for p, pref in zip(arena_pic,btnpixeldata)]
+	t = arena_pic / 255
+	t = t.reshape(height, width, 4)
+	plt.imshow(t)
+	#<matplotlib.image.AxesImage object at 0x04123CD0>
+	plt.show()
+	
+	# MAX_COLOR_DIFF * 10 to try to get rid of clouds. I think the contrast between bg and units should be big enought
+	sub_img = [(p[0], p[1], p[2]) if abs(numpy.subtract(pref, p).sum()) > (MAX_COLOR_DIFF*10) else (0,0,0) for p, pref in zip(arena_pic,btnpixeldata)]
 	
 	a = numpy.array(sub_img)
 	a = a / 255
@@ -465,14 +457,20 @@ def run_all(actions, data):
 		calculate_corrected_button_pos(data)
 		a = (data["world_ref"][0] - gScreenOffsetL, data["world_ref"][1] - gScreenOffsetT)
 		
-		myprint("found world ref at : " + str(a) + " with : " + data["appname_key"] + " aspect ratio " + str(data["world_aspect"]),2)
+		myprint("found world ref at : " + str(a) + " with : " + data["appname_key"],2)
+		myprint("corrected setting coord : " + str(data["button_correct_coords"]["settingbtn"]))
+		myprint("corrected start coord : " + str(data["button_correct_coords"]["battle"]))
+		myprint("corrected arena top left coord : " + str(data["button_correct_coords"]["arena_top_left"]))
+		
 		
 	if "wait_after_init" in actions:
 		sleep(8)
 		
 	if "test_screen_diff" in actions:
-		updateScreen(handle[0])
-		calculate_arena_diff(data)
+		while True:
+			updateScreen(handle[0])
+			calculate_arena_diff(data)
+			sleep(10)
 		
 	if "find_screen" in actions:
 		cur_screen = get_current_screen_name(data)
@@ -488,13 +486,14 @@ def run_all(actions, data):
 				
 	if "test_play_area" in actions:
 		sleep(5)
-		for x in range(15):
-			for y in range(15):
+		for x in range(data["grid_size"][0]):
+			for y in range(data["grid_size"][1]):
 				board_x, board_y = board_coord_to_mousepos(data, x, y)
 				#moveMouse(data["drop_area_abs"]["left"], data["drop_area_abs"]["top"])
 				#moveMouse(data["button_abs_coords"]["card2"][0], data["button_abs_coords"]["card2"][1])
 				moveMouse(board_x, board_y)
-				sleep(0.5)
+				sleep(0.2)
+			sleep(2)
 				
 	if "test_battle_button" in actions:
 		moveMouse(*data["button_abs_coords"]["settingbtn"])
@@ -573,10 +572,10 @@ if __name__ == '__main__':
 			"update_screen",
 			"init",
 			"wait_after_init",
-			"test_screen_diff",
+			#"test_screen_diff",
 			#"test_cards",
 			#"find_screen",
-			#"test_play_area",
+			"test_play_area",
 			#"test_battle_button",
 			#"test_energy",
 			#"start_battle",
@@ -588,10 +587,10 @@ if __name__ == '__main__':
 			"current_arena": "arena_0", #could detect it eventually, for now should be ok
 			"ref_img" : {
 				"appname" : os.path.join(DATA_FOLDER, "ref", "appname.png"),
-				"settingbtn" : os.path.join(DATA_FOLDER, "ref", "settingbtn.png"),
-				"settingbtn_noside" : os.path.join(DATA_FOLDER, "ref", "settingbtn_noside.png"),
-				"shop_side" : os.path.join(DATA_FOLDER, "ref", "shop_side.png"),
-				"shop_noside" : os.path.join(DATA_FOLDER, "ref", "shop_noside.png"),
+				"settingbtn" : os.path.join(DATA_FOLDER, "ref", "settingbtn_noside.png"),
+				#"settingbtn_noside" : os.path.join(DATA_FOLDER, "ref", "settingbtn_noside.png"),
+				"shop_side" : os.path.join(DATA_FOLDER, "ref", "shop_noside.png"),
+				#"shop_noside" : os.path.join(DATA_FOLDER, "ref", "shop_noside.png"),
 				"arena_0" : os.path.join(DATA_FOLDER, "ref", "training_arena.png"), #training arena
 				"cards" : {
 					"skelarmy" : os.path.join(DATA_FOLDER, "ref", "cardskelarmy.png"),
@@ -606,34 +605,34 @@ if __name__ == '__main__':
 				}
 			},
 			"button_coords" : {
-				"battle" : (677,477),
-				"finish" : (676,645),
-				"card0" : (600,650),
-				"card1" : (675,650),
-				"card2" : (750,650),
-				"card3" : (825,650),
-				"appname" : (245,3),
-				"settingbtn" : (831,81),
-				"settingbtn_noside" : (772,81),
-				"shop_side" : (493,668),
-				"shop_noside" : (442,668),
-				"homescreen" : (683,453),
-				"battlescreen" : (711,598),
-				"victoryscreen" : (673,631),
-				"energy0" : (588,706),
-				"energy1" : (608,706),
-				"energy2" : (634,706),
-				"energy3" : (658,706),
-				"energy4" : (687,706),
-				"energy5" : (711,706),
-				"energy6" : (738,706),
-				"energy7" : (766,706),
-				"energy8" : (794,706),
-				"energy9" : (822,706),
-				"energy10" : (848,706),
+				"battle" : (650,477), #(677,477),
+				"finish" : (650,645),
+				"card0" : (572,650),
+				"card1" : (648,650),
+				"card2" : (721,650),
+				"card3" : (796,650),
+				#"appname" : (245,3),
+				"settingbtn" : (802,81),
+				#"settingbtn_noside" : (772,81),
+				#"shop_side" : (442,668),
+				#"shop_noside" : (442,668),
+				"homescreen" : (652,453), #(683,453),
+				"battlescreen" : (683,598), #(711,598),
+				"victoryscreen" : (616,631), #(673,631),
+				"energy0" : (557,706),
+				"energy1" : (581,706),
+				"energy2" : (599,706),
+				"energy3" : (626,706),
+				"energy4" : (653,706),
+				"energy5" : (681,706),
+				"energy6" : (707,706),
+				"energy7" : (735,706),
+				"energy8" : (763,706),
+				"energy9" : (790,706),
+				"energy10" : (825,706),
 				"stacksidebar" : (29,61),
 				"deckstarcorner" : (569,607),
-				"arena_top_left" : (481,32)
+				"arena_top_left" : (452,31)
 			},
 			"screen_colors" : {
 				"homescreen" : [83,208,255], # color of the pixel at button_coords/homescreen (GRB)
@@ -644,15 +643,15 @@ if __name__ == '__main__':
 			},
 			"game_area" : {
 				"top":31,
-				"left":481,
+				"left":452,
 				"width":391,
 				"height":696
 			},
 			"drop_area" : {
-				"top":348,
-				"left":520,
-				"width":318,
-				"height":210
+				"top":349,
+				"left":492,
+				"width":314,
+				"height":209
 			},
 			"grid_size" : (18,15)
 		})
