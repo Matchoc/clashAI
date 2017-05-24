@@ -206,6 +206,122 @@ def toPixIndex(coord, w):
 	return (coord[1] * w) + coord[0]
 	
 # =============================================================================
+# CLUSTERING ALGO
+
+def collectSurroundingData(pixIndex, collection, binaryList, board_size, matchAllColor = False):
+	indexes = set()
+	indexes.add(pixIndex)
+	clusterinfo = {}
+	newCluster = set()
+	while len(indexes) > 0:
+		index = indexes.pop()
+		if not isIndexInList(index, collection):
+			newCluster.add(index)
+			coord = toXYCoord(index, board_size[0])
+			coordu = [coord[0], coord[1] - 1]
+			coordd = [coord[0], coord[1] + 1]
+			coordr = [coord[0] + 1, coord[1]]
+			coordl = [coord[0] - 1, coord[1]]
+			indexu = toPixIndex(coordu, board_size[0])
+			indexd = toPixIndex(coordd, board_size[0])
+			indexr = toPixIndex(coordr, board_size[0])
+			indexl = toPixIndex(coordl, board_size[0])
+			if isIndexElement(indexu, binaryList) and not indexu in newCluster and (matchAllColor == False or isMatchAllColors(binaryList, index, indexu)):
+				indexes.add(indexu)
+			if isIndexElement(indexd, binaryList) and not indexd in newCluster and (matchAllColor == False or isMatchAllColors(binaryList, index, indexd)):
+				indexes.add(indexd)
+			if isIndexElement(indexr, binaryList) and not indexr in newCluster and (matchAllColor == False or isMatchAllColors(binaryList, index, indexr)):
+				indexes.add(indexr)
+			if isIndexElement(indexl, binaryList) and not indexl in newCluster and (matchAllColor == False or isMatchAllColors(binaryList, index, indexl)):
+				indexes.add(indexl)
+
+	minClusterSize = 5
+	if len(newCluster) > minClusterSize:
+		minX = -1
+		minY = -1
+		for index in newCluster:
+			coord = toXYCoord(index, board_size[0])
+			if minX < 0 or minX > coord[0]:
+				minX = coord[0]
+				minY = coord[1]
+		perim = calculatePerimeter(newCluster, [minX, minY], board_size, False)
+		clustercoord = clusterIndexToClusterCoord(newCluster, board_size)
+		clusterinfo["clusterIndexes"] = newCluster
+		clusterinfo["clusterPerimeter"] = perim
+		clusterinfo["clusterCoord"] = clustercoord
+		collection.append(clusterinfo)
+
+def isMatchAllColors(binaryList, curIndex, newIndex):
+	return binaryList[curIndex][RED] == binaryList[newIndex][RED] and binaryList[curIndex][GREEN] == binaryList[newIndex][GREEN] and binaryList[curIndex][BLUE] == binaryList[newIndex][BLUE]
+		
+def isIndexElement(index, binaryList):
+	if index < 0 or index >= len(binaryList) or numpy.sum(binaryList[index] <= 5):
+		return False
+	return True
+			
+def isIndexInList(index, listOfList):
+	for sublist in listOfList:
+		if index in sublist["clusterIndexes"]:
+			return True
+			
+	return False
+	
+def collectClusters(data):
+	a = ScopedTimer("collectClusters")
+	myprint("Collect color clusters")
+	data["frame_data"]["clusters"] = []
+	start = [0,0]
+	end = data["frame_data"]["arena_diff_size"]
+	board_size = data["frame_data"]["arena_diff_size"]
+	for y in range(start[1], end[1]):
+		for x in range(start[0], end[0]):
+			index = toPixIndex([x,y], board_size[0])
+			if numpy.sum(data["frame_data"]["arena_diff"][index]) > 5 and not isIndexInList(index, data["frame_data"]["clusters"]):
+				collectSurroundingData(index, data["frame_data"]["clusters"], data["frame_data"]["arena_diff"], board_size)
+
+def clusterIndexToClusterCoord(cluster, board_size):
+	clustercoord = set()
+	for index in cluster:
+		clustercoord.add(tuple(toXYCoord(index, board_size[0])))
+		
+	return clustercoord
+	
+def calculatePerimeter(cluster, startCoord, board_size, verbose):
+	perimeter = set()
+	perimeter.add(tuple(startCoord))
+	current = startCoord
+	dirs = numpy.array([[0,-1], [-1,-1], [-1,0], [-1,1], [0,1], [1,1], [1,0], [1,-1]])
+	backtrace = numpy.array([5, 6, 0, 0, 2, 2, 4, 4])
+	clustercoord = clusterIndexToClusterCoord(cluster, board_size)
+	i = 0
+	start = 0
+	# have to move in from an empty direction or the algorithm fails
+	for x in range(len(dirs)):
+		move = (start + x) % len(dirs)
+		inspect = current + dirs[move]
+		inspecttuple = tuple(inspect)
+		if not inspecttuple in clustercoord:
+			start = x
+			break
+
+	# this algo has a weakness where it will stop early.
+	# the easy solution is to loop twice.
+	while not numpy.array_equal(current, startCoord) or i < 10:
+		if numpy.array_equal(current, startCoord):
+			i += 1
+		for x in range(len(dirs)):
+			move = (start + x) % len(dirs)
+			inspect = current + dirs[move]
+			inspecttuple = tuple(inspect)
+			if inspecttuple in clustercoord:
+				if inspecttuple not in perimeter:
+					perimeter.add(inspecttuple)
+				current = inspect
+				start = backtrace[move] # backtrace (http://www.imageprocessingplace.com/downloads_V3/root_downloads/tutorials/contour_tracing_Abeer_George_Ghuneim/moore.html)
+				break
+	return perimeter
+	
+# =============================================================================
 # GAME LOGIC
 def get_current_screen_name(data):
 	homescreen_coord = data["button_correct_coords"]["homescreen"]
@@ -358,13 +474,15 @@ def calculate_corrected_button_pos(data):
 def calculate_current_energy(data):
 	data["frame_data"]["current_energy"] = 0
 	energy_color = data["screen_colors"]["energybar"]
+	energy_color_high = data["screen_colors"]["energybar_high"]
 	for i in range(11):
 		coord_name = "energy" + str(i)
 		coord = data["button_correct_coords"][coord_name]
 		coord_index = toPixIndex(coord, gScreenWidth)
 		coord_val = gScreen[coord_index]
 		diffcolor = energy_color[RED] - coord_val[RED] + energy_color[BLUE] - coord_val[BLUE] + energy_color[GREEN] - coord_val[GREEN]
-		if abs(diffcolor) > MAX_COLOR_DIFF:
+		diffcolor_high = energy_color_high[RED] - coord_val[RED] + energy_color_high[BLUE] - coord_val[BLUE] + energy_color_high[GREEN] - coord_val[GREEN]
+		if abs(diffcolor) > (MAX_COLOR_DIFF*5) and abs(diffcolor_high) > (MAX_COLOR_DIFF*5):
 			break
 	
 	data["frame_data"]["current_energy"] = i-1
@@ -416,21 +534,23 @@ def calculate_arena_diff(data):
 	myprint("width " + str(width) + " height " + str(height) + " arena_offset_x " + str(arena_offset_x) + " arena_offset_y " + str(arena_offset_y))
 	arena_pic = arena_pic.reshape(width * height, 4)
 	
-	t = arena_pic / 255
-	t = t.reshape(height, width, 4)
-	plt.imshow(t)
+	#t = arena_pic / 255
+	#t = t.reshape(height, width, 4)
+	#plt.imshow(t)
 	#<matplotlib.image.AxesImage object at 0x04123CD0>
-	plt.show()
+	#plt.show()
 	
 	# MAX_COLOR_DIFF * 10 to try to get rid of clouds. I think the contrast between bg and units should be big enought
 	sub_img = [(p[0], p[1], p[2]) if abs(numpy.subtract(pref, p).sum()) > (MAX_COLOR_DIFF*10) else (0,0,0) for p, pref in zip(arena_pic,btnpixeldata)]
+	data["frame_data"]["arena_diff"] = sub_img
+	data["frame_data"]["arena_diff_size"] = (width, height)
 	
-	a = numpy.array(sub_img)
-	a = a / 255
-	a = a.reshape(height, width, 3)
-	plt.imshow(a)
+	#a = numpy.array(sub_img)
+	#a = a / 255
+	#a = a.reshape(height, width, 3)
+	#plt.imshow(a)
 	#<matplotlib.image.AxesImage object at 0x04123CD0>
-	plt.show()
+	#plt.show()
 		
 def run_all(actions, data):
 	if data["use_paint"] == True:
@@ -470,6 +590,7 @@ def run_all(actions, data):
 		while True:
 			updateScreen(handle[0])
 			calculate_arena_diff(data)
+			collectClusters(data)
 			sleep(10)
 		
 	if "find_screen" in actions:
@@ -508,7 +629,7 @@ def run_all(actions, data):
 			#cur_screen = get_current_screen_name(data)
 			calculate_current_energy(data)
 			myprint("current energy : " + str(data["frame_data"]["current_energy"]))
-			sleep(2)
+			sleep(4)
 			
 	if "test_cards" in actions:
 		while True:
@@ -575,9 +696,9 @@ if __name__ == '__main__':
 			#"test_screen_diff",
 			#"test_cards",
 			#"find_screen",
-			"test_play_area",
+			#"test_play_area",
 			#"test_battle_button",
-			#"test_energy",
+			"test_energy",
 			#"start_battle",
 			#"play",
 			"none" # put this here so I don't have to add , when I change list size.
@@ -635,10 +756,11 @@ if __name__ == '__main__':
 				"arena_top_left" : (452,31)
 			},
 			"screen_colors" : {
-				"homescreen" : [83,208,255], # color of the pixel at button_coords/homescreen (GRB)
+				"homescreen" : [83,208,255], # color of the pixel at button_coords/homescreen (BGR)
 				"battlescreen" : [101,135,166],
 				"victoryscreen" : [255,187,105],
 				"energybar" : [244,136,240],
+				"energybar_high" : [255,191,255],
 				"stacksidebar" : [68,59,60]
 			},
 			"game_area" : {
