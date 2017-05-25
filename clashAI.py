@@ -255,7 +255,7 @@ def isMatchAllColors(binaryList, curIndex, newIndex):
 	return binaryList[curIndex][RED] == binaryList[newIndex][RED] and binaryList[curIndex][GREEN] == binaryList[newIndex][GREEN] and binaryList[curIndex][BLUE] == binaryList[newIndex][BLUE]
 		
 def isIndexElement(index, binaryList):
-	if index < 0 or index >= len(binaryList) or numpy.sum(binaryList[index] <= 5):
+	if index < 0 or index >= len(binaryList) or numpy.sum(binaryList[index]) <= 5:
 		return False
 	return True
 			
@@ -278,6 +278,8 @@ def collectClusters(data):
 			index = toPixIndex([x,y], board_size[0])
 			if numpy.sum(data["frame_data"]["arena_diff"][index]) > 5 and not isIndexInList(index, data["frame_data"]["clusters"]):
 				collectSurroundingData(index, data["frame_data"]["clusters"], data["frame_data"]["arena_diff"], board_size)
+				
+	myprint(str(data["frame_data"]["clusters"]),2)
 
 def clusterIndexToClusterCoord(cluster, board_size):
 	clustercoord = set()
@@ -399,15 +401,10 @@ def searchCoordInScreen(pixelToFind, x, y, w, h, gwidth, gheight, hasAlpha):
 					
 					for i in range(len(screenline)):
 						diff = subimgline[i][0] - screenline[i][0] + subimgline[i][1] - screenline[i][1] + subimgline[i][2] - screenline[i][2]
-						#myprint("diff " + str(diff))
 						if abs(diff) > MAX_COLOR_DIFF:
 							match = False
 							break
-					
-					#intersectpix = set(subimgline).intersection(screenline)
-					#myprint("Found intersection line " + str(row) + " : " + str(intersectpix))
-					#if screenline != subimgline:
-					#	match = False
+
 					row += 1
 				if match == True:
 					coord = toXYCoord(pixIndex, gScreenWidth)
@@ -475,14 +472,14 @@ def calculate_current_energy(data):
 	data["frame_data"]["current_energy"] = 0
 	energy_color = data["screen_colors"]["energybar"]
 	energy_color_high = data["screen_colors"]["energybar_high"]
-	for i in range(11):
+	for i in range(12):
 		coord_name = "energy" + str(i)
+		if coord_name not in data["button_correct_coords"]:
+			break
 		coord = data["button_correct_coords"][coord_name]
 		coord_index = toPixIndex(coord, gScreenWidth)
 		coord_val = gScreen[coord_index]
-		diffcolor = energy_color[RED] - coord_val[RED] + energy_color[BLUE] - coord_val[BLUE] + energy_color[GREEN] - coord_val[GREEN]
-		diffcolor_high = energy_color_high[RED] - coord_val[RED] + energy_color_high[BLUE] - coord_val[BLUE] + energy_color_high[GREEN] - coord_val[GREEN]
-		if abs(diffcolor) > (MAX_COLOR_DIFF*5) and abs(diffcolor_high) > (MAX_COLOR_DIFF*5):
+		if coord_val[RED] <= 128:
 			break
 	
 	data["frame_data"]["current_energy"] = i-1
@@ -545,12 +542,23 @@ def calculate_arena_diff(data):
 	data["frame_data"]["arena_diff"] = sub_img
 	data["frame_data"]["arena_diff_size"] = (width, height)
 	
-	#a = numpy.array(sub_img)
-	#a = a / 255
-	#a = a.reshape(height, width, 3)
-	#plt.imshow(a)
+	a = numpy.array(sub_img)
+	a = a / 255
+	a = a.reshape(height, width, 3)
+	plt.imshow(a)
 	#<matplotlib.image.AxesImage object at 0x04123CD0>
-	#plt.show()
+	plt.show()
+	
+def play_dumb_strat(data):
+	# finding cards in hand is expensive. Only do it when necessary (first update and after playing a card)
+	if data["frame_data"]["needHandUpdate"] == True:
+		calculate_current_cards_in_hand(data)
+		
+	calculate_arena_diff(data)
+	collectClusters(data)
+	calculate_current_energy(data)
+	
+	
 		
 def run_all(actions, data):
 	if data["use_paint"] == True:
@@ -650,24 +658,26 @@ def run_all(actions, data):
 			calculate_current_energy(data)
 			if cur_screen == "homescreen":
 				click(*data["button_abs_coords"]["battle"])
+				data["frame_data"]["needHandUpdate"] = True
 				sleep(3)
 			elif cur_screen == "victoryscreen":
 				num_game += 1
 				click(*data["button_abs_coords"]["finish"])
 				sleep(3)
 			elif cur_screen == "battlescreen":
-				deltat = (cur_time - prev_time).total_seconds()
-				myprint("deltat = {dt}, wait_card = {wt}".format(dt=deltat, wt=wait_card))
-				wait_card -= deltat
-				if wait_card <= 0:
-					click(*data["button_abs_coords"]["card0"])
-					sleep(0.1)
-					# front of my right tower
-					default_x = 15
-					default_y = 6
-					default_x, default_y = board_coord_to_mousepos(data, default_x, default_y)
-					click(default_x, default_y)
-					wait_card = 5.0
+				play_dumb_strat(data)
+				#deltat = (cur_time - prev_time).total_seconds()
+				#myprint("deltat = {dt}, wait_card = {wt}".format(dt=deltat, wt=wait_card))
+				#wait_card -= deltat
+				#if wait_card <= 0:
+				#	click(*data["button_abs_coords"]["card0"])
+				#	sleep(0.1)
+				#	# front of my right tower
+				#	default_x = 15
+				#	default_y = 6
+				#	default_x, default_y = board_coord_to_mousepos(data, default_x, default_y)
+				#	click(default_x, default_y)
+				#	wait_card = 5.0
 					
 			prev_time = cur_time
 			cur_time = datetime.datetime.now()
@@ -693,12 +703,12 @@ if __name__ == '__main__':
 			"update_screen",
 			"init",
 			"wait_after_init",
-			#"test_screen_diff",
+			"test_screen_diff",
 			#"test_cards",
 			#"find_screen",
 			#"test_play_area",
 			#"test_battle_button",
-			"test_energy",
+			#"test_energy",
 			#"start_battle",
 			#"play",
 			"none" # put this here so I don't have to add , when I change list size.
