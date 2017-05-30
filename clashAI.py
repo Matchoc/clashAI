@@ -33,7 +33,7 @@ DATA_FOLDER = "data"
 RED = 2
 GREEN = 1
 BLUE = 0
-MAX_COLOR_DIFF = 15 # 0 to 255
+MAX_COLOR_DIFF = 30 # 0 to 255
 PRINT_LEVEL=0
 def myprint(msg, level=0):
 	if (level >= PRINT_LEVEL):
@@ -45,6 +45,7 @@ def moveMouse(x,y):
 	win32api.SetCursorPos((x,y))	
 
 def click(x,y):
+	myprint("Click Screen at " + str((x,y)),1)
 	win32api.SetCursorPos((x,y))
 	sleep(.5)
 	win32api.mouse_event(win32con.MOUSEEVENTF_LEFTDOWN,x,y,0,0)
@@ -164,6 +165,9 @@ class ScopedTimer:
 		delta = datetime.datetime.now() - self.starttime
 		myprint(str(self.name) + " : " + str(delta),3)
 
+def color_diff(c1, c2):
+	return abs(c1[RED] - c2[RED]) + abs(c1[GREEN] - c2[GREEN]) + abs(c1[BLUE] - c2[BLUE])
+		
 def toXYCoord(pixIndex, w):
 	y = int(pixIndex / w)
 	floaty = pixIndex / w
@@ -323,6 +327,29 @@ def calculatePerimeter(cluster, startCoord, board_size, verbose):
 				break
 	return perimeter
 	
+def count_pixel_per_side(data):
+	diff_img = data["frame_data"]["arena_diff"]
+	diff_size = data["frame_data"]["arena_diff_size"]
+	start_top_left = (30,63)
+	end_bottom_right = (360,528)
+	left_pix_count = 0
+	right_pix_count = 0
+	index = 0
+	for pix in diff_img:
+		coord = toXYCoord(index, diff_size[0])
+		#myprint("coord : " + str(coord) + " pix : " + str(pix))
+		index += 1
+		if numpy.sum(pix[0:3]) > 5 and coord[0] > start_top_left[0] and coord[0] < end_bottom_right[0] and coord[1] > start_top_left[1] and coord[1] < end_bottom_right[1]:
+			if coord[0] < diff_size[0] / 2:
+				left_pix_count += 1
+			else:
+				right_pix_count += 1
+				
+	data["frame_data"]["left_count"] = left_pix_count
+	data["frame_data"]["right_count"] = right_pix_count
+	myprint("left count = " + str(left_pix_count) + ", right count = " + str(right_pix_count))
+	
+	
 # =============================================================================
 # GAME LOGIC
 def get_current_screen_name(data):
@@ -346,17 +373,17 @@ def get_current_screen_name(data):
 		battle=screen_battle_val, x3=victoryscreen_coord[0], y3=victoryscreen_coord[1], victory=screen_victory_val
 	), 2)
 	
-	diffhome = screen_home_val[RED] - homescreen_color[RED] + screen_home_val[BLUE] - homescreen_color[BLUE] + screen_home_val[GREEN] - homescreen_color[GREEN]
-	diffbattle = screen_battle_val[RED] - battlescreen_color[RED] + screen_battle_val[BLUE] - battlescreen_color[BLUE] + screen_battle_val[GREEN] - battlescreen_color[GREEN]
-	diffvictory = screen_victory_val[RED] - victoryscreen_color[RED] + screen_victory_val[BLUE] - victoryscreen_color[BLUE] + screen_victory_val[GREEN] - victoryscreen_color[GREEN]
+	diffhome = color_diff(screen_home_val, homescreen_color)
+	diffbattle = color_diff(screen_battle_val, battlescreen_color)
+	diffvictory = color_diff(screen_victory_val, victoryscreen_color)
 	
-	if abs(diffhome) < MAX_COLOR_DIFF:
+	if diffhome < MAX_COLOR_DIFF:
 		data["frame_data"]["current_screen"] = "homescreen"
 		return "homescreen"
-	elif abs(diffbattle) < MAX_COLOR_DIFF:
+	elif diffbattle < MAX_COLOR_DIFF:
 		data["frame_data"]["current_screen"] = "battlescreen"
 		return "battlescreen"
-	elif abs(diffvictory) < MAX_COLOR_DIFF:
+	elif diffvictory < MAX_COLOR_DIFF:
 		data["frame_data"]["current_screen"] = "victoryscreen"
 		return "victoryscreen"
 	else:
@@ -376,7 +403,7 @@ def searchCoordInScreen(pixelToFind, x, y, w, h, gwidth, gheight, hasAlpha):
 		for refx in range(x, x + gwidth):
 			pixIndex = toPixIndex((refx, refy), gScreenWidth)
 			pix = gScreen[pixIndex]
-			diff = pix[0] - pixelToFind[0][0] + pix[1] - pixelToFind[0][1] + pix[2] - pixelToFind[0][2]
+			diff = color_diff(pix, pixelToFind[0])
 			if diff <= MAX_COLOR_DIFF:
 				match = True
 				row = 0
@@ -400,7 +427,7 @@ def searchCoordInScreen(pixelToFind, x, y, w, h, gwidth, gheight, hasAlpha):
 					screenline = screenline.tolist()
 					
 					for i in range(len(screenline)):
-						diff = subimgline[i][0] - screenline[i][0] + subimgline[i][1] - screenline[i][1] + subimgline[i][2] - screenline[i][2]
+						diff = color_diff(subimgline[i], screenline[i])
 						if abs(diff) > MAX_COLOR_DIFF:
 							match = False
 							break
@@ -412,6 +439,7 @@ def searchCoordInScreen(pixelToFind, x, y, w, h, gwidth, gheight, hasAlpha):
 					coord[1] += int(h / 2) + gScreenOffsetT
 					return coord
 				
+	myprint("Image NOT FOUND", 2)
 	return None
 
 def convert_RGB_to_BGR(img):
@@ -538,26 +566,108 @@ def calculate_arena_diff(data):
 	#plt.show()
 	
 	# MAX_COLOR_DIFF * 10 to try to get rid of clouds. I think the contrast between bg and units should be big enought
-	sub_img = [(p[0], p[1], p[2]) if abs(numpy.subtract(pref, p).sum()) > (MAX_COLOR_DIFF*10) else (0,0,0) for p, pref in zip(arena_pic,btnpixeldata)]
+	sub_img = [(p[0], p[1], p[2]) if color_diff(pref, p) > (MAX_COLOR_DIFF*5) else (0,0,0) for p, pref in zip(arena_pic,btnpixeldata)]
 	data["frame_data"]["arena_diff"] = sub_img
 	data["frame_data"]["arena_diff_size"] = (width, height)
 	
-	a = numpy.array(sub_img)
-	a = a / 255
-	a = a.reshape(height, width, 3)
-	plt.imshow(a)
-	#<matplotlib.image.AxesImage object at 0x04123CD0>
-	plt.show()
+	#a = numpy.array(sub_img)
+	#a = a / 255
+	#a = a.reshape(height, width, 3)
+	#plt.imshow(a)
+	##<matplotlib.image.AxesImage object at 0x04123CD0>
+	#plt.show()
+	
+def get_card(cardname, data):
+	for card in data["frame_data"]["hand"]:
+		if data["frame_data"]["hand"][card] == cardname:
+			return card
+			
+	return None
+	
+def play_card(cardid, board_coord, data):
+	myprint("Playing card " + cardid + " to " + str(board_coord),2)
+	click(*data["button_abs_coords"][cardid])
+	sleep(0.1)
+	# bridge
+	default_x = board_coord[0]
+	default_y = board_coord[1]
+	default_x, default_y = board_coord_to_mousepos(data, default_x, default_y)
+	click(default_x, default_y)
 	
 def play_dumb_strat(data):
+	right_bridge = (14, 0)
+	left_bridge = (3,0)
+	right_rear = (9,14)
+	left_rear = (7,14)
+	
 	# finding cards in hand is expensive. Only do it when necessary (first update and after playing a card)
 	if data["frame_data"]["needHandUpdate"] == True:
 		calculate_current_cards_in_hand(data)
 		
 	calculate_arena_diff(data)
-	collectClusters(data)
+	count_pixel_per_side(data)
+	# collectClusters(data) # too costy
 	calculate_current_energy(data)
 	
+	giant = get_card("giant", data)
+	balloon = get_card("balloon", data)
+	archer = get_card("archer", data)
+	has_more_unit_on_the_left = data["frame_data"]["left_count"] > data["frame_data"]["right_count"]
+	if giant is not None and balloon is not None and data["frame_data"]["current_energy"] >= 9:
+		if has_more_unit_on_the_left:
+			play_coord = right_bridge
+		else:
+			play_coord = left_bridge
+		play_card(giant, play_coord, data)
+		sleep(1.0)
+		play_card(balloon, play_coord, data)
+		data["frame_data"]["needHandUpdate"] = True
+		return
+		
+	if giant is not None and balloon is None and data["frame_data"]["current_energy"] >= 6:
+		if has_more_unit_on_the_left:
+			play_coord = right_rear
+		else:
+			play_coord = left_rear
+		play_card(giant, play_coord, data)
+		data["frame_data"]["needHandUpdate"] = True
+		return
+		
+	fireball = get_card("fireball", data)
+	zap = get_card("zap", data)
+	minion = get_card("minion", data)
+	skelarmy = get_card("skelarmy", data)
+	minion_horde = get_card("minion_horde", data)	
+	
+	if skelarmy is not None and data["frame_data"]["left_count"] > 4000 and data["frame_data"]["current_energy"] >= 3:
+		play_card(skelarmy, (3,5), data)
+		data["frame_data"]["needHandUpdate"] = True
+		return
+		
+	if skelarmy is not None and data["frame_data"]["right_count"] > 4000 and data["frame_data"]["current_energy"] >= 3:
+		play_card(skelarmy, (14,5), data)
+		data["frame_data"]["needHandUpdate"] = True
+		return
+	
+	if minion_horde is not None and data["frame_data"]["left_count"] > 6000 and data["frame_data"]["current_energy"] >= 5:
+		play_card(minion_horde, (3,5), data)
+		data["frame_data"]["needHandUpdate"] = True
+		return
+		
+	if minion_horde is not None and data["frame_data"]["right_count"] > 6000 and data["frame_data"]["current_energy"] >= 5:
+		play_card(minion_horde, (14,5), data)
+		data["frame_data"]["needHandUpdate"] = True
+		return
+		
+	if fireball is not None and data["frame_data"]["current_energy"] >= 8:
+		play_card(fireball, (14,-8), data)
+		data["frame_data"]["needHandUpdate"] = True
+		return
+		
+	if archer is not None and data["frame_data"]["current_energy"] >= 8:
+		play_card(archer, (8,13), data)
+		data["frame_data"]["needHandUpdate"] = True
+		return
 	
 		
 def run_all(actions, data):
@@ -598,7 +708,8 @@ def run_all(actions, data):
 		while True:
 			updateScreen(handle[0])
 			calculate_arena_diff(data)
-			collectClusters(data)
+			#collectClusters(data)
+			count_pixel_per_side(data)
 			sleep(10)
 		
 	if "find_screen" in actions:
@@ -703,8 +814,8 @@ if __name__ == '__main__':
 			"update_screen",
 			"init",
 			"wait_after_init",
-			"test_screen_diff",
-			#"test_cards",
+			#"test_screen_diff",
+			"test_cards",
 			#"find_screen",
 			#"test_play_area",
 			#"test_battle_button",
@@ -715,14 +826,15 @@ if __name__ == '__main__':
 		],
 		{
 			"use_paint" : True,
-			"current_arena": "arena_0", #could detect it eventually, for now should be ok
+			"current_arena": "arena_7", #could detect it eventually, for now should be ok
 			"ref_img" : {
 				"appname" : os.path.join(DATA_FOLDER, "ref", "appname.png"),
-				"settingbtn" : os.path.join(DATA_FOLDER, "ref", "settingbtn_noside.png"),
+				"settingbtn" : os.path.join(DATA_FOLDER, "ref", "settingbtn_wide.png"),
 				#"settingbtn_noside" : os.path.join(DATA_FOLDER, "ref", "settingbtn_noside.png"),
 				"shop_side" : os.path.join(DATA_FOLDER, "ref", "shop_noside.png"),
 				#"shop_noside" : os.path.join(DATA_FOLDER, "ref", "shop_noside.png"),
-				"arena_0" : os.path.join(DATA_FOLDER, "ref", "training_arena.png"), #training arena
+				"arena_0" : os.path.join(DATA_FOLDER, "ref", "training_arena.png"), # training arena
+				"arena_7" : os.path.join(DATA_FOLDER, "ref", "royal_arena.png"), # royal arena
 				"cards" : {
 					"skelarmy" : os.path.join(DATA_FOLDER, "ref", "cardskelarmy.png"),
 					"archer" : os.path.join(DATA_FOLDER, "ref", "cardarcher.png"),
@@ -732,7 +844,9 @@ if __name__ == '__main__':
 					"goblinspear" : os.path.join(DATA_FOLDER, "ref", "cardgoblinspear.png"),
 					"minion" : os.path.join(DATA_FOLDER, "ref", "cardminion.png"),
 					"valkyrie" : os.path.join(DATA_FOLDER, "ref", "cardvalkyrie.png"),
-					"goblin" : os.path.join(DATA_FOLDER, "ref", "cardgoblin.png")
+					"goblin" : os.path.join(DATA_FOLDER, "ref", "cardgoblin.png"),
+					"minion_horde" : os.path.join(DATA_FOLDER, "ref", "cardminionhorde.png"),
+					"zap" : os.path.join(DATA_FOLDER, "ref", "cardzap.png")
 				}
 			},
 			"button_coords" : {
@@ -763,7 +877,7 @@ if __name__ == '__main__':
 				"energy10" : (825,706),
 				"stacksidebar" : (29,61),
 				"deckstarcorner" : (569,607),
-				"arena_top_left" : (452,31)
+				"arena_top_left" : (460,31)
 			},
 			"screen_colors" : {
 				"homescreen" : [83,208,255], # color of the pixel at button_coords/homescreen (BGR)
