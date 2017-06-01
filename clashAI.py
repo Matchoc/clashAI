@@ -19,6 +19,7 @@ import scipy.ndimage
 import multiprocessing
 import nltk
 import matplotlib.pyplot as plt
+import cv2
 #from nltk.sentiment.vader import SentimentIntensityAnalyzer
 #from sklearn.externals import joblib
 from time import strftime
@@ -390,6 +391,39 @@ def get_current_screen_name(data):
 		myprint("Error: Could not identify current screen !", 5)
 		return None
 	
+def searchCoordInScreenCV(pixelToFind, x, y, w, h, gwidth, gheight, hasAlpha):
+	a = ScopedTimer("searchCoordInScreenCV")
+	if gwidth == -1 or (gwidth+x) > gScreenWidth:
+		gwidth = gScreenWidth-x
+	if gheight == -1 or (gheight+y) > gScreenHeight:
+		gheight = gScreenHeight-y
+		
+	#crop image
+	tmpScreen = gScreen.reshape(gScreenHeight, gScreenWidth, len(gScreen[0]))
+	tmpScreen = numpy.array(tmpScreen[y:y+gheight, x:x+gwidth,0:3], dtype=numpy.uint8)
+	tmpTemplate = numpy.array(pixelToFind, dtype=numpy.uint8)
+	if hasAlpha:
+		tmpTemplate = tmpTemplate[:,0:3]
+	tmpTemplate = tmpTemplate.reshape(h,w,3)
+	
+	print("(x,y) = (" + str(x) + "," + str(y) + "), width,height = " + str(gwidth) + ", " + str(gheight))
+	plt.imshow(tmpScreen)
+	#<matplotlib.image.AxesImage object at 0x04123CD0>
+	plt.show()
+	
+	res = cv2.matchTemplate(tmpScreen,tmpTemplate,cv2.TM_CCOEFF)
+	min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(res)
+	
+	max_loc = list(max_loc)
+	max_loc[0] = int(max_loc[0] + x + (w / 2))
+	max_loc[1] = int(max_loc[1] + y + (h / 2))
+	
+	plt.imshow(res,cmap = 'gray')
+	plt.show()
+	
+	myprint("min_val : " + str(min_val) + ", max_val : " + str(max_val) + ", min_loc : " + str(min_loc) + ", max_loc : " + str(max_loc), 2)
+	
+	return list(max_loc)
 
 def searchCoordInScreen(pixelToFind, x, y, w, h, gwidth, gheight, hasAlpha):
 	a = ScopedTimer("searchCoordInScreen")
@@ -463,7 +497,7 @@ def search_image(path, x=0, y=0, w=-1, h=-1):
 	hasAlpha = im.mode == "RGBA"
 	btnpixeldata = convert_RGB_to_BGR(btnpixeldata)
 	myprint("search_image " + path)
-	coord = searchCoordInScreen(btnpixeldata, x, y, width, height, w, h, hasAlpha)
+	coord = searchCoordInScreenCV(btnpixeldata, x, y, width, height, w, h, hasAlpha)
 	if coord is not None:
 		coord[0] -= int(width/2)
 		coord[1] -= int(height/2)
@@ -876,7 +910,7 @@ if __name__ == '__main__':
 				"energy9" : (790,706),
 				"energy10" : (825,706),
 				"stacksidebar" : (29,61),
-				"deckstarcorner" : (569,607),
+				"deckstarcorner" : (520,600),
 				"arena_top_left" : (460,31)
 			},
 			"screen_colors" : {
