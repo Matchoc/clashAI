@@ -406,20 +406,26 @@ def searchCoordInScreenCV(pixelToFind, x, y, w, h, gwidth, gheight, hasAlpha):
 		tmpTemplate = tmpTemplate[:,0:3]
 	tmpTemplate = tmpTemplate.reshape(h,w,3)
 	
-	print("(x,y) = (" + str(x) + "," + str(y) + "), width,height = " + str(gwidth) + ", " + str(gheight))
-	plt.imshow(tmpScreen)
+	#print("(x,y) = (" + str(x) + "," + str(y) + "), width,height = " + str(gwidth) + ", " + str(gheight))
+	#plt.imshow(tmpScreen)
 	#<matplotlib.image.AxesImage object at 0x04123CD0>
-	plt.show()
+	#plt.show()
 	
-	res = cv2.matchTemplate(tmpScreen,tmpTemplate,cv2.TM_CCOEFF)
+	#methods = ['cv2.TM_CCOEFF', 'cv2.TM_CCOEFF_NORMED', 'cv2.TM_CCORR',
+    #        'cv2.TM_CCORR_NORMED', 'cv2.TM_SQDIFF', 'cv2.TM_SQDIFF_NORMED']
+	res = cv2.matchTemplate(tmpScreen,tmpTemplate,cv2.TM_CCOEFF_NORMED)
 	min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(res)
 	
-	max_loc = list(max_loc)
-	max_loc[0] = int(max_loc[0] + x + (w / 2))
-	max_loc[1] = int(max_loc[1] + y + (h / 2))
+	# arbitrary cutoff
+	if max_val < 0.9:
+		return None
 	
-	plt.imshow(res,cmap = 'gray')
-	plt.show()
+	max_loc = list(max_loc)
+	max_loc[0] = int(max_loc[0] + x + (w / 2)) + gScreenOffsetL
+	max_loc[1] = int(max_loc[1] + y + (h / 2)) + gScreenOffsetT
+	
+	#plt.imshow(res,cmap = 'gray')
+	#plt.show()
 	
 	myprint("min_val : " + str(min_val) + ", max_val : " + str(max_val) + ", min_loc : " + str(min_loc) + ", max_loc : " + str(max_loc), 2)
 	
@@ -497,6 +503,7 @@ def search_image(path, x=0, y=0, w=-1, h=-1):
 	hasAlpha = im.mode == "RGBA"
 	btnpixeldata = convert_RGB_to_BGR(btnpixeldata)
 	myprint("search_image " + path)
+	myprint("x,y = " + str(x) + "," + str(y) + "w,h = " + str(w) + "," + str(h))
 	coord = searchCoordInScreenCV(btnpixeldata, x, y, width, height, w, h, hasAlpha)
 	if coord is not None:
 		coord[0] -= int(width/2)
@@ -557,8 +564,10 @@ def calculate_current_cards_in_hand(data):
 	myprint("corrected_button_coord = " + str(data["button_abs_coords"]))
 	
 	startsearch = data["button_correct_coords"]["deckstarcorner"]
-	width = data["button_correct_coords"]["card3"][0] + 100
-	height = data["button_correct_coords"]["card3"][1] + 100
+	width = data["button_correct_coords"]["card3"][0] + 80 - startsearch[0]
+	height = data["button_correct_coords"]["card3"][1] + 80 - startsearch[1]
+	
+	myprint("startsearch = " + str(startsearch) + ", width,height = " + str(width) + "," + str(height))
 	
 	for card in data["ref_img"]["cards"]:
 		coord = search_image(data["ref_img"]["cards"][card], startsearch[0], startsearch[1], width, height)
