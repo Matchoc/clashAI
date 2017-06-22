@@ -35,7 +35,7 @@ RED = 2
 GREEN = 1
 BLUE = 0
 MAX_COLOR_DIFF = 30 # 0 to 255
-PRINT_LEVEL=0
+PRINT_LEVEL=2
 def myprint(msg, level=0):
 	if (level >= PRINT_LEVEL):
 		sys.stdout.buffer.write((str(msg) + "\n").encode('UTF-8'))
@@ -46,7 +46,7 @@ def moveMouse(x,y):
 	win32api.SetCursorPos((x,y))	
 
 def click(x,y):
-	myprint("Click Screen at " + str((x,y)),1)
+	myprint("Click Screen at " + str((x,y)),2)
 	win32api.SetCursorPos((x,y))
 	sleep(.5)
 	win32api.mouse_event(win32con.MOUSEEVENTF_LEFTDOWN,x,y,0,0)
@@ -69,6 +69,7 @@ gScreenOffsetT = 0
 gScreenOffsetL = 0
 gScreenWidth = 0
 gScreenHeight = 0
+gScreenData = {}
 def updateScreen(hwnd = None, wait_focus=True):
 	a = ScopedTimer("updateScreen")
 	global gScreen
@@ -80,6 +81,7 @@ def updateScreen(hwnd = None, wait_focus=True):
 	
 	global gScreenNumpy
 	global gScreenAlphaNumpy
+	global gScreenData
 	
 	if not hwnd:
 		hwnd=win32gui.GetDesktopWindow()
@@ -90,18 +92,28 @@ def updateScreen(hwnd = None, wait_focus=True):
 	w=r-l
 	gScreenWidth = w
 	gScreenHeight = h
-	hDC = win32gui.GetWindowDC(hwnd)
-	myDC=win32ui.CreateDCFromHandle(hDC)
-	newDC=myDC.CreateCompatibleDC()
-
-	myBitMap = win32ui.CreateBitmap()
-	myBitMap.CreateCompatibleBitmap(myDC, w, h)
+	if "hDC" not in gScreenData or gScreenData["hDC"] is None:
+		hDC = win32gui.GetWindowDC(hwnd)
+		myDC=win32ui.CreateDCFromHandle(hDC)
+		newDC=myDC.CreateCompatibleDC()
+		myBitMap = win32ui.CreateBitmap()
+		myBitMap.CreateCompatibleBitmap(myDC, w, h)
+		gScreenData["hDC"] = hDC
+		gScreenData["myDC"] = myDC
+		gScreenData["newDC"] = newDC
+		gScreenData["myBitMap"] = myBitMap
+	else:
+		hDC = gScreenData["hDC"]
+		myDC = gScreenData["myDC"]
+		newDC = gScreenData["newDC"]
+		myBitMap = gScreenData["myBitMap"]
 
 	newDC.SelectObject(myBitMap)
 
-	win32gui.SetForegroundWindow(hwnd)
 	if wait_focus:
+		win32gui.SetForegroundWindow(hwnd)
 		sleep(.2) #lame way to allow screen to draw before taking shot
+		
 	newDC.BitBlt((0,0),(w, h) , myDC, (0,0), win32con.SRCCOPY)
 	myBitMap.Paint(newDC)
 	asTuple = myBitMap.GetBitmapBits(False)
@@ -112,6 +124,8 @@ def updateScreen(hwnd = None, wait_focus=True):
 	gScreen = gScreen.reshape(gScreenHeight * gScreenWidth, 4)
 	gScreenAlpha = gScreen
 	
+	#win32gui.ReleaseDC(win32gui.GetDesktopWindow(), hDC)
+	
 	myprint("screenWidth : " + str(gScreenWidth) + ", screenHeight : " + str(gScreenHeight) + ", offsetL : " + str(gScreenOffsetL)  + ", offsetT : " + str(gScreenOffsetT))
 
 def gScreenToNumpy():
@@ -120,7 +134,7 @@ def gScreenToNumpy():
 	gScreenNumpy = gScreenNumpy.reshape(gScreenHeight, gScreenWidth, 3)
 	gScreenNumpy = gScreenNumpy / 255.0
 		
-def takeScreenshot(hwnd = None):
+def takeScreenshot(hwnd = None, subfolder=None):
 	global gScreenshotCount
 	if not hwnd:
 		hwnd=win32gui.GetDesktopWindow()
@@ -146,6 +160,8 @@ def takeScreenshot(hwnd = None):
 	myBitMap.Paint(newDC)	
 	
 	pathbmp = os.path.join(DATA_FOLDER, "screenshots")
+	if subfolder is not None:
+		pathbmp = os.path.join(pathbmp, subfolder)
 	if not os.path.isdir(pathbmp):
 		os.makedirs(pathbmp)
 	
@@ -348,7 +364,7 @@ def count_pixel_per_side(data):
 				
 	data["frame_data"]["left_count"] = left_pix_count
 	data["frame_data"]["right_count"] = right_pix_count
-	myprint("left count = " + str(left_pix_count) + ", right count = " + str(right_pix_count))
+	myprint("left count = " + str(left_pix_count) + ", right count = " + str(right_pix_count),2)
 	
 	
 # =============================================================================
@@ -360,23 +376,34 @@ def get_current_screen_name(data):
 	battlescreen_color = data["screen_colors"]["battlescreen"]
 	victoryscreen_coord = data["button_correct_coords"]["victoryscreen"]
 	victoryscreen_color = data["screen_colors"]["victoryscreen"]
+	changescreen_coord = data["button_correct_coords"]["changescreen"]
+	changescreen_color = data["screen_colors"]["changescreen"]
+	limitscreen_coord = data["button_correct_coords"]["limitscreen"]
+	limitscreen_color = data["screen_colors"]["limitscreen"]
 	
 	homescreen_index = toPixIndex(homescreen_coord, gScreenWidth)
 	battlescreen_index = toPixIndex(battlescreen_coord, gScreenWidth)
 	victoryscreen_index = toPixIndex(victoryscreen_coord, gScreenWidth)
+	changescreen_index = toPixIndex(changescreen_coord, gScreenWidth)
+	limitscreen_index = toPixIndex(limitscreen_coord, gScreenWidth)
 	
 	screen_home_val = gScreen[homescreen_index]
 	screen_battle_val = gScreen[battlescreen_index]
 	screen_victory_val = gScreen[victoryscreen_index]
+	screen_change_val = gScreen[changescreen_index]
+	screen_limit_val = gScreen[limitscreen_index]
 	
-	myprint("color at home ({x},{y}) : {home}, at battle ({x2},{y2}) : {battle}, at victory ({x3},{y3}) : {victory}".format(
+	myprint("color at home ({x},{y}) : {home}, at battle ({x2},{y2}) : {battle}, at victory ({x3},{y3}) : {victory}, at change ({x4},{y4}) : {change}".format(
 		x=homescreen_coord[0], y=homescreen_coord[1], home=screen_home_val, x2=battlescreen_coord[0], y2=battlescreen_coord[1],
-		battle=screen_battle_val, x3=victoryscreen_coord[0], y3=victoryscreen_coord[1], victory=screen_victory_val
-	), 2)
+		battle=screen_battle_val, x3=victoryscreen_coord[0], y3=victoryscreen_coord[1], victory=screen_victory_val,
+		x4=changescreen_coord[0], y4=changescreen_coord[1], change=screen_change_val
+	), 1)
 	
 	diffhome = color_diff(screen_home_val, homescreen_color)
 	diffbattle = color_diff(screen_battle_val, battlescreen_color)
 	diffvictory = color_diff(screen_victory_val, victoryscreen_color)
+	diffchange = color_diff(screen_change_val, changescreen_color)
+	difflimit = color_diff(screen_limit_val, limitscreen_color)
 	
 	if diffhome < MAX_COLOR_DIFF:
 		data["frame_data"]["current_screen"] = "homescreen"
@@ -387,12 +414,18 @@ def get_current_screen_name(data):
 	elif diffvictory < MAX_COLOR_DIFF:
 		data["frame_data"]["current_screen"] = "victoryscreen"
 		return "victoryscreen"
+	elif diffchange < MAX_COLOR_DIFF:
+		data["frame_data"]["current_screen"] = "changescreen"
+		return "changescreen"
+	elif difflimit < MAX_COLOR_DIFF:
+		data["frame_data"]["current_screen"] = "limitscreen"
+		return "limitscreen"
 	else:
 		myprint("Error: Could not identify current screen !", 5)
 		return None
 	
 def searchCoordInScreenCV(pixelToFind, x, y, w, h, gwidth, gheight, hasAlpha):
-	a = ScopedTimer("searchCoordInScreenCV")
+	#a = ScopedTimer("searchCoordInScreenCV")
 	if gwidth == -1 or (gwidth+x) > gScreenWidth:
 		gwidth = gScreenWidth-x
 	if gheight == -1 or (gheight+y) > gScreenHeight:
@@ -416,8 +449,10 @@ def searchCoordInScreenCV(pixelToFind, x, y, w, h, gwidth, gheight, hasAlpha):
 	res = cv2.matchTemplate(tmpScreen,tmpTemplate,cv2.TM_CCOEFF_NORMED)
 	min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(res)
 	
+	myprint("min_val : " + str(min_val) + ", max_val : " + str(max_val) + ", min_loc : " + str(min_loc) + ", max_loc : " + str(max_loc))
+	
 	# arbitrary cutoff
-	if max_val < 0.9:
+	if max_val < 0.85:
 		return None
 	
 	max_loc = list(max_loc)
@@ -426,8 +461,6 @@ def searchCoordInScreenCV(pixelToFind, x, y, w, h, gwidth, gheight, hasAlpha):
 	
 	#plt.imshow(res,cmap = 'gray')
 	#plt.show()
-	
-	myprint("min_val : " + str(min_val) + ", max_val : " + str(max_val) + ", min_loc : " + str(min_loc) + ", max_loc : " + str(max_loc), 2)
 	
 	return list(max_loc)
 
@@ -541,17 +574,19 @@ def calculate_current_energy(data):
 	data["frame_data"]["current_energy"] = 0
 	energy_color = data["screen_colors"]["energybar"]
 	energy_color_high = data["screen_colors"]["energybar_high"]
-	for i in range(12):
+	for i in range(1,12):
 		coord_name = "energy" + str(i)
 		if coord_name not in data["button_correct_coords"]:
 			break
 		coord = data["button_correct_coords"][coord_name]
 		coord_index = toPixIndex(coord, gScreenWidth)
 		coord_val = gScreen[coord_index]
+		myprint(coord_name + " : coord(" + str(coord[0]) + "," + str(coord[1]) + "), coord_val : " + str(coord_val))
 		if coord_val[RED] <= 128:
 			break
 	
 	data["frame_data"]["current_energy"] = i-1
+	myprint("current energy : " + str(data["frame_data"]["current_energy"]),3)
 	
 def calculate_current_cards_in_hand(data):
 	a = ScopedTimer("calculate_current_cards_in_hand")
@@ -569,9 +604,11 @@ def calculate_current_cards_in_hand(data):
 	
 	myprint("startsearch = " + str(startsearch) + ", width,height = " + str(width) + "," + str(height))
 	
+	total = 0
 	for card in data["ref_img"]["cards"]:
 		coord = search_image(data["ref_img"]["cards"][card], startsearch[0], startsearch[1], width, height)
 		if coord is not None:
+			total += 1
 			if coord[0] <= data["button_abs_coords"]["card0"][0]:
 				data["frame_data"]["hand"]["card0"] = card
 			elif coord[0] <= data["button_abs_coords"]["card1"][0]:
@@ -583,14 +620,41 @@ def calculate_current_cards_in_hand(data):
 			else:
 				myprint("ERROR : Invalid coord, card found at : " + str(coord) + " for card " + card, 3)
 				
+	return total
+		
+def get_arena_ref(data):
+	arena_right = data["button_correct_coords"]["arena_bottom_right"][0]
+	arena_bottom = data["button_correct_coords"]["arena_bottom_right"][1]
+	arena_offset_x = data["button_correct_coords"]["arena_top_left"][0]
+	arena_offset_y = data["button_correct_coords"]["arena_top_left"][1]
+	width = arena_right - arena_offset_x
+	height = arena_bottom - arena_offset_y
+	
+	# extract the arena picture from gScreen
+	myprint("screen width " + str(gScreenWidth) + " height " + str(gScreenHeight) + " len(gscreen) " + str(len(gScreen)))
+	arena_pic = gScreen.reshape(gScreenHeight, gScreenWidth, 4)
+	
+	arena_pic = arena_pic[arena_offset_y:arena_offset_y + height, arena_offset_x:arena_offset_x + width]
+	myprint("width " + str(width) + " height " + str(height) + " arena_offset_x " + str(arena_offset_x) + " arena_offset_y " + str(arena_offset_y))
+	arena_pic = arena_pic.reshape(width * height, 4)
+	
+	data["frame_data"]["arena_img"] = arena_pic
+	data["frame_data"]["arena_diff_size"] = (width, height)
+	
+	#t = arena_pic / 255
+	#t = t.reshape(height, width, 4)
+	#plt.imshow(t)
+	#<matplotlib.image.AxesImage object at 0x04123CD0>
+	#plt.show()
+	
 def calculate_arena_diff(data):
 	cur_arena = data["current_arena"]
 	
-	im = Image.open(data["ref_img"][cur_arena])
-	width, height = im.size
-	btnpixeldata = list(im.getdata())
-	hasAlpha = im.mode == "RGBA"
-	btnpixeldata = convert_RGB_to_BGR(btnpixeldata)
+	if "arena_img" not in data["frame_data"] or data["frame_data"]["arena_img"] is None:
+		get_arena_ref(data)
+		
+	btnpixeldata = data["frame_data"]["arena_img"]
+	width, height = data["frame_data"]["arena_diff_size"]
 	arena_offset_x = data["button_correct_coords"]["arena_top_left"][0]
 	arena_offset_y = data["button_correct_coords"]["arena_top_left"][1]
 	
@@ -611,13 +675,12 @@ def calculate_arena_diff(data):
 	# MAX_COLOR_DIFF * 10 to try to get rid of clouds. I think the contrast between bg and units should be big enought
 	sub_img = [(p[0], p[1], p[2]) if color_diff(pref, p) > (MAX_COLOR_DIFF*5) else (0,0,0) for p, pref in zip(arena_pic,btnpixeldata)]
 	data["frame_data"]["arena_diff"] = sub_img
-	data["frame_data"]["arena_diff_size"] = (width, height)
 	
 	#a = numpy.array(sub_img)
 	#a = a / 255
 	#a = a.reshape(height, width, 3)
 	#plt.imshow(a)
-	##<matplotlib.image.AxesImage object at 0x04123CD0>
+	#<matplotlib.image.AxesImage object at 0x04123CD0>
 	#plt.show()
 	
 def get_card(cardname, data):
@@ -636,8 +699,12 @@ def play_card(cardid, board_coord, data):
 	default_y = board_coord[1]
 	default_x, default_y = board_coord_to_mousepos(data, default_x, default_y)
 	click(default_x, default_y)
+	sleep(0.2) # give time for card to be played or sometimes next frame happen too quickly
+	if "frame_data" in data:
+		data["frame_data"]["needHandUpdate"] = True
 	
 def play_dumb_strat(data):
+	a = ScopedTimer("play_dumb_strat")
 	right_bridge = (14, 0)
 	left_bridge = (3,0)
 	right_rear = (9,14)
@@ -645,7 +712,8 @@ def play_dumb_strat(data):
 	
 	# finding cards in hand is expensive. Only do it when necessary (first update and after playing a card)
 	if data["frame_data"]["needHandUpdate"] == True:
-		calculate_current_cards_in_hand(data)
+		num_card_ided = calculate_current_cards_in_hand(data)
+		myprint("current hand : " + str(data["frame_data"]["hand"]),3)
 		
 	calculate_arena_diff(data)
 	count_pixel_per_side(data)
@@ -655,61 +723,95 @@ def play_dumb_strat(data):
 	giant = get_card("giant", data)
 	balloon = get_card("balloon", data)
 	archer = get_card("archer", data)
+	minion_horde = get_card("minion_horde", data)
+	zap = get_card("zap", data)
 	has_more_unit_on_the_left = data["frame_data"]["left_count"] > data["frame_data"]["right_count"]
+	if zap is not None and data["frame_data"]["played_giant"] == True and data["frame_data"]["current_energy"] >= 2:
+		play_coord = data["frame_data"]["played_giant_coord"]
+		play_coord = (play_coord[0], play_coord[1] - 6)
+		play_card(zap, play_coord, data)
+		return
+	
+	if zap is None and data["frame_data"]["played_giant"] == True and data["frame_data"]["current_energy"] >= 2:
+		data["frame_data"]["played_giant"] = False
+	
 	if giant is not None and balloon is not None and data["frame_data"]["current_energy"] >= 9:
 		if has_more_unit_on_the_left:
 			play_coord = right_bridge
 		else:
 			play_coord = left_bridge
 		play_card(giant, play_coord, data)
-		sleep(1.0)
+		sleep(0.5)
 		play_card(balloon, play_coord, data)
-		data["frame_data"]["needHandUpdate"] = True
+		data["frame_data"]["played_giant"] = True
+		data["frame_data"]["played_giant_coord"] = play_coord
+		sleep(1.0) # make sure the card was played and that mana was updated or I get weird stuff like mana is 5 but cards are grayed out
 		return
 		
-	if giant is not None and balloon is None and data["frame_data"]["current_energy"] >= 6:
+	#if num_card_ided >= 4 and giant is not None and balloon is None and data["frame_data"]["current_energy"] >= 6:
+	#	if has_more_unit_on_the_left:
+	#		play_coord = right_rear
+	#	else:
+	#		play_coord = left_rear
+	#	play_card(giant, play_coord, data)
+	#	return
+		
+	if giant is None and balloon is not None and minion_horde is not None and data["frame_data"]["current_energy"] >= 9:
 		if has_more_unit_on_the_left:
-			play_coord = right_rear
+			play_coord = right_bridge
 		else:
-			play_coord = left_rear
-		play_card(giant, play_coord, data)
-		data["frame_data"]["needHandUpdate"] = True
+			play_coord = left_bridge
+		play_card(balloon, (play_coord[0], play_coord[1] - 1), data)
+		sleep(0.5)
+		play_card(minion_horde, play_coord, data)
+		return
+		
+	# wait for the mana to play the combo, no need to defend
+	if giant is not None and balloon is not None:
 		return
 		
 	fireball = get_card("fireball", data)
-	zap = get_card("zap", data)
 	minion = get_card("minion", data)
 	skelarmy = get_card("skelarmy", data)
-	minion_horde = get_card("minion_horde", data)	
 	
 	if skelarmy is not None and data["frame_data"]["left_count"] > 4000 and data["frame_data"]["current_energy"] >= 3:
 		play_card(skelarmy, (3,5), data)
-		data["frame_data"]["needHandUpdate"] = True
 		return
 		
 	if skelarmy is not None and data["frame_data"]["right_count"] > 4000 and data["frame_data"]["current_energy"] >= 3:
 		play_card(skelarmy, (14,5), data)
-		data["frame_data"]["needHandUpdate"] = True
 		return
 	
-	if minion_horde is not None and data["frame_data"]["left_count"] > 6000 and data["frame_data"]["current_energy"] >= 5:
+	if minion_horde is not None and data["frame_data"]["left_count"] > 5500 and data["frame_data"]["current_energy"] >= 7:
 		play_card(minion_horde, (3,5), data)
-		data["frame_data"]["needHandUpdate"] = True
 		return
 		
-	if minion_horde is not None and data["frame_data"]["right_count"] > 6000 and data["frame_data"]["current_energy"] >= 5:
+	if minion_horde is not None and data["frame_data"]["right_count"] > 5500 and data["frame_data"]["current_energy"] >= 7:
 		play_card(minion_horde, (14,5), data)
-		data["frame_data"]["needHandUpdate"] = True
+		return
+		
+	if fireball is not None and data["frame_data"]["right_count"] > 6000 and data["frame_data"]["current_energy"] >= 5:
+		play_card(fireball, right_bridge, data)
+		return
+		
+	if fireball is not None and data["frame_data"]["left_count"] > 6000 and data["frame_data"]["current_energy"] >= 5:
+		play_card(fireball, left_bridge, data)
 		return
 		
 	if fireball is not None and data["frame_data"]["current_energy"] >= 8:
 		play_card(fireball, (14,-8), data)
-		data["frame_data"]["needHandUpdate"] = True
 		return
 		
 	if archer is not None and data["frame_data"]["current_energy"] >= 8:
 		play_card(archer, (8,13), data)
-		data["frame_data"]["needHandUpdate"] = True
+		return
+		
+	if zap is not None and data["frame_data"]["current_energy"] >= 10:
+		if has_more_unit_on_the_left:
+			play_coord = left_bridge
+		else:
+			play_coord = right_bridge
+		play_card(zap, play_coord, data)
 		return
 	
 		
@@ -722,7 +824,7 @@ def run_all(actions, data):
 	if handle is None or handle[0] is None:
 		myprint("Could not find window !", 5)
 	
-	if "takeScreenshot" in actions:
+	if "takeScreenshot_test" in actions:
 		while True:
 			updateScreen(handle[0])
 			takeScreenshot(handle[0])
@@ -790,7 +892,6 @@ def run_all(actions, data):
 			updateScreen(handle[0])
 			#cur_screen = get_current_screen_name(data)
 			calculate_current_energy(data)
-			myprint("current energy : " + str(data["frame_data"]["current_energy"]))
 			sleep(4)
 			
 	if "test_cards" in actions:
@@ -801,21 +902,27 @@ def run_all(actions, data):
 			sleep(5)
 	
 	if "play" in actions:
-		max_game = 4
+		max_game = 200
 		num_game = 0
 		wait_card = 0
 		cur_time = datetime.datetime.now()
 		prev_time = cur_time
 		while num_game < max_game:
-			updateScreen(handle[0])
+			updateScreen(handle[0], False) # the first init/update screen will have set the window in the foreground. Saves 0.2ms every time we do a screenshot.
 			cur_screen = get_current_screen_name(data)
-			calculate_current_energy(data)
+			#calculate_current_energy(data)
 			if cur_screen == "homescreen":
 				click(*data["button_abs_coords"]["battle"])
 				data["frame_data"]["needHandUpdate"] = True
+				data["frame_data"]["arena_img"] = None
+				data["frame_data"]["played_giant"] = False
 				sleep(3)
 			elif cur_screen == "victoryscreen":
+				if "takeScreenshot" in actions:
+					updateScreen(handle[0])
+					takeScreenshot(handle[0], "matches")
 				num_game += 1
+				myprint("playing game " + str(num_game) + "/" + str(max_game),3)
 				click(*data["button_abs_coords"]["finish"])
 				sleep(3)
 			elif cur_screen == "battlescreen":
@@ -832,6 +939,14 @@ def run_all(actions, data):
 				#	default_x, default_y = board_coord_to_mousepos(data, default_x, default_y)
 				#	click(default_x, default_y)
 				#	wait_card = 5.0
+			elif cur_screen == "changescreen":
+				click(*data["button_abs_coords"]["change_ok_btn"])
+				sleep(3)
+			elif cur_screen == "limitscreen":
+				click(*data["button_abs_coords"]["limit_ok_btn"])
+				sleep(3)
+			else:
+				sleep(2) # avoid refreshing too fast if anyway we don't know what screen we're in.
 					
 			prev_time = cur_time
 			cur_time = datetime.datetime.now()
@@ -853,23 +968,24 @@ if __name__ == '__main__':
 	#sys.exit()
 	
 	run_all([
-			#"takeScreenshot",
+			#"takeScreenshot_test",
 			"update_screen",
 			"init",
-			"wait_after_init",
+			#"wait_after_init",
 			#"test_screen_diff",
-			"test_cards",
+			#"test_cards",
 			#"find_screen",
 			#"test_play_area",
 			#"test_battle_button",
 			#"test_energy",
 			#"start_battle",
-			#"play",
+			"play",
+			#"takeScreenshot",
 			"none" # put this here so I don't have to add , when I change list size.
 		],
 		{
-			"use_paint" : True,
-			"current_arena": "arena_7", #could detect it eventually, for now should be ok
+			"use_paint" : False,
+			"current_arena": "arena_6", #could detect it eventually, for now should be ok
 			"ref_img" : {
 				"appname" : os.path.join(DATA_FOLDER, "ref", "appname.png"),
 				"settingbtn" : os.path.join(DATA_FOLDER, "ref", "settingbtn_wide.png"),
@@ -878,6 +994,7 @@ if __name__ == '__main__':
 				#"shop_noside" : os.path.join(DATA_FOLDER, "ref", "shop_noside.png"),
 				"arena_0" : os.path.join(DATA_FOLDER, "ref", "training_arena.png"), # training arena
 				"arena_7" : os.path.join(DATA_FOLDER, "ref", "royal_arena.png"), # royal arena
+				"arena_6" : os.path.join(DATA_FOLDER, "ref", "workshop_arena.png"), # builder's workshop
 				"cards" : {
 					"skelarmy" : os.path.join(DATA_FOLDER, "ref", "cardskelarmy.png"),
 					"archer" : os.path.join(DATA_FOLDER, "ref", "cardarcher.png"),
@@ -893,7 +1010,7 @@ if __name__ == '__main__':
 				}
 			},
 			"button_coords" : {
-				"battle" : (650,477), #(677,477),
+				"battle" : (579,475),#(650,477)
 				"finish" : (650,645),
 				"card0" : (572,650),
 				"card1" : (648,650),
@@ -904,9 +1021,13 @@ if __name__ == '__main__':
 				#"settingbtn_noside" : (772,81),
 				#"shop_side" : (442,668),
 				#"shop_noside" : (442,668),
-				"homescreen" : (652,453), #(683,453),
+				"homescreen" : (584,460), #(652,453),
 				"battlescreen" : (683,598), #(711,598),
 				"victoryscreen" : (616,631), #(673,631),
+				"changescreen" : (513,695),
+				"change_ok_btn" : (644,691),
+				"limitscreen" : (523,326),
+				"limit_ok_btn" : (648,470),
 				"energy0" : (557,706),
 				"energy1" : (581,706),
 				"energy2" : (599,706),
@@ -920,7 +1041,8 @@ if __name__ == '__main__':
 				"energy10" : (825,706),
 				"stacksidebar" : (29,61),
 				"deckstarcorner" : (520,600),
-				"arena_top_left" : (460,31)
+				"arena_top_left" : (460,90),
+				"arena_bottom_right" : (843,566)
 			},
 			"screen_colors" : {
 				"homescreen" : [83,208,255], # color of the pixel at button_coords/homescreen (BGR)
@@ -928,7 +1050,9 @@ if __name__ == '__main__':
 				"victoryscreen" : [255,187,105],
 				"energybar" : [244,136,240],
 				"energybar_high" : [255,191,255],
-				"stacksidebar" : [68,59,60]
+				"stacksidebar" : [68,59,60],
+				"changescreen" : [83,67,52],
+				"limitscreen" : [241,235,222]
 			},
 			"game_area" : {
 				"top":31,
