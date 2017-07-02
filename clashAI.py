@@ -35,7 +35,7 @@ RED = 2
 GREEN = 1
 BLUE = 0
 MAX_COLOR_DIFF = 30 # 0 to 255
-PRINT_LEVEL=2
+PRINT_LEVEL=3
 def myprint(msg, level=0):
 	if (level >= PRINT_LEVEL):
 		sys.stdout.buffer.write((str(msg) + "\n").encode('UTF-8'))
@@ -174,13 +174,14 @@ def takeScreenshot(hwnd = None, subfolder=None):
 # =============================================================================
 # UTIL METHOD
 class ScopedTimer:
-	def __init__(self, name):
+	def __init__(self, name, level=3):
 		self.starttime = datetime.datetime.now()
 		self.name = name
+		self.level = level
 		
 	def __del__(self):
 		delta = datetime.datetime.now() - self.starttime
-		myprint(str(self.name) + " : " + str(delta),3)
+		myprint(str(self.name) + " : " + str(delta),self.level)
 
 def color_diff(c1, c2):
 	return abs(c1[RED] - c2[RED]) + abs(c1[GREEN] - c2[GREEN]) + abs(c1[BLUE] - c2[BLUE])
@@ -345,22 +346,52 @@ def calculatePerimeter(cluster, startCoord, board_size, verbose):
 	return perimeter
 	
 def count_pixel_per_side(data):
-	diff_img = data["frame_data"]["arena_diff"]
+	a = ScopedTimer("count_pixel_per_side", 1)
+	diff_img = numpy.array(data["frame_data"]["arena_diff"], dtype=numpy.uint8)
 	diff_size = data["frame_data"]["arena_diff_size"]
-	start_top_left = (30,63)
-	end_bottom_right = (360,528)
+	start_top_left = [30,63]
+	end_bottom_right = [360,528]
 	left_pix_count = 0
 	right_pix_count = 0
 	index = 0
-	for pix in diff_img:
-		coord = toXYCoord(index, diff_size[0])
-		#myprint("coord : " + str(coord) + " pix : " + str(pix))
-		index += 1
-		if numpy.sum(pix[0:3]) > 5 and coord[0] > start_top_left[0] and coord[0] < end_bottom_right[0] and coord[1] > start_top_left[1] and coord[1] < end_bottom_right[1]:
-			if coord[0] < diff_size[0] / 2:
-				left_pix_count += 1
-			else:
-				right_pix_count += 1
+	
+	diff_img_xy = diff_img.reshape(diff_size[1], diff_size[0], len(diff_img[0]))
+	if end_bottom_right[0] > diff_size[0]:
+		end_bottom_right[0] = diff_size[0]
+	if end_bottom_right[1] > diff_size[1]:
+		end_bottom_right[1] = diff_size[1]
+		
+	diff_img_xy = diff_img_xy[start_top_left[1]:end_bottom_right[1],start_top_left[0]:end_bottom_right[0],0:3]
+	gray_image = cv2.cvtColor(diff_img_xy, cv2.COLOR_BGR2GRAY)
+	
+	half_size = (end_bottom_right[0]-start_top_left[0]) / 2
+	diff_img_left = gray_image[:,0:half_size]
+	diff_img_right = gray_image[:,half_size:]
+	
+	left_pix_count = cv2.countNonZero(diff_img_left)
+	right_pix_count = cv2.countNonZero(diff_img_right)
+	
+	#myprint(diff_img_left)
+	#t = diff_img_left / 255
+	#t = t.reshape(height, width, 4)
+	#plt.imshow(t)
+	#<matplotlib.image.AxesImage object at 0x04123CD0>
+	#plt.show()
+	
+	#myprint(diff_img_right)
+	#t = diff_img_right / 255
+	#plt.imshow(t)
+	#plt.show()
+	
+	#for pix in diff_img:
+	#	coord = toXYCoord(index, diff_size[0])
+	#	#myprint("coord : " + str(coord) + " pix : " + str(pix))
+	#	index += 1
+	#	if numpy.sum(pix[0:3]) > 5 and coord[0] > start_top_left[0] and coord[0] < end_bottom_right[0] and coord[1] > start_top_left[1] and coord[1] < end_bottom_right[1]:
+	#		if coord[0] < diff_size[0] / 2:
+	#			left_pix_count += 1
+	#		else:
+	#			right_pix_count += 1
 				
 	data["frame_data"]["left_count"] = left_pix_count
 	data["frame_data"]["right_count"] = right_pix_count
@@ -425,7 +456,7 @@ def get_current_screen_name(data):
 		return None
 	
 def searchCoordInScreenCV(pixelToFind, x, y, w, h, gwidth, gheight, hasAlpha):
-	#a = ScopedTimer("searchCoordInScreenCV")
+	a = ScopedTimer("searchCoordInScreenCV", 1)
 	if gwidth == -1 or (gwidth+x) > gScreenWidth:
 		gwidth = gScreenWidth-x
 	if gheight == -1 or (gheight+y) > gScreenHeight:
@@ -465,7 +496,7 @@ def searchCoordInScreenCV(pixelToFind, x, y, w, h, gwidth, gheight, hasAlpha):
 	return list(max_loc)
 
 def searchCoordInScreen(pixelToFind, x, y, w, h, gwidth, gheight, hasAlpha):
-	a = ScopedTimer("searchCoordInScreen")
+	a = ScopedTimer("searchCoordInScreen", 1)
 	#startindex = toPixIndex((x, y), gScreenWidth)
 	#endindex = toPixIndex((x + w, y + h), gScreenWidth)
 	if gwidth == -1 or (gwidth+x) > gScreenWidth:
@@ -571,6 +602,7 @@ def calculate_corrected_button_pos(data):
 		data["button_correct_coords"][button_name] = corrected_coord
 		
 def calculate_current_energy(data):
+	a = ScopedTimer("calculate_current_energy", 1)
 	data["frame_data"]["current_energy"] = 0
 	energy_color = data["screen_colors"]["energybar"]
 	energy_color_high = data["screen_colors"]["energybar_high"]
@@ -590,12 +622,13 @@ def calculate_current_energy(data):
 	
 def calculate_current_cards_in_hand(data):
 	a = ScopedTimer("calculate_current_cards_in_hand")
-	data["frame_data"]["hand"] = {
-		"card0" : "",
-		"card1" : "",
-		"card2" : "",
-		"card3" : ""
-	}
+	if "hand" not in data["frame_data"]:
+		data["frame_data"]["hand"] = {
+			"card0" : "",
+			"card1" : "",
+			"card2" : "",
+			"card3" : ""
+		}
 	myprint("corrected_button_coord = " + str(data["button_abs_coords"]))
 	
 	startsearch = data["button_correct_coords"]["deckstarcorner"]
@@ -604,11 +637,9 @@ def calculate_current_cards_in_hand(data):
 	
 	myprint("startsearch = " + str(startsearch) + ", width,height = " + str(width) + "," + str(height))
 	
-	total = 0
 	for card in data["ref_img"]["cards"]:
 		coord = search_image(data["ref_img"]["cards"][card], startsearch[0], startsearch[1], width, height)
 		if coord is not None:
-			total += 1
 			if coord[0] <= data["button_abs_coords"]["card0"][0]:
 				data["frame_data"]["hand"]["card0"] = card
 			elif coord[0] <= data["button_abs_coords"]["card1"][0]:
@@ -619,7 +650,9 @@ def calculate_current_cards_in_hand(data):
 				data["frame_data"]["hand"]["card3"] = card
 			else:
 				myprint("ERROR : Invalid coord, card found at : " + str(coord) + " for card " + card, 3)
-				
+	
+	# number of known card. If we don't have the mana for the card yet I probably won't be able to ID it.
+	total = len([cardid for cardid in data["frame_data"]["hand"] if data["frame_data"]["hand"][cardid] is not "" and data["frame_data"]["hand"][cardid] is not None])
 	return total
 		
 def get_arena_ref(data):
@@ -648,6 +681,7 @@ def get_arena_ref(data):
 	#plt.show()
 	
 def calculate_arena_diff(data):
+	a = ScopedTimer("calculate_arena_diff", 1)
 	cur_arena = data["current_arena"]
 	
 	if "arena_img" not in data["frame_data"] or data["frame_data"]["arena_img"] is None:
@@ -701,6 +735,7 @@ def play_card(cardid, board_coord, data):
 	click(default_x, default_y)
 	sleep(0.2) # give time for card to be played or sometimes next frame happen too quickly
 	if "frame_data" in data:
+		data["frame_data"]["hand"][cardid] = ""
 		data["frame_data"]["needHandUpdate"] = True
 	
 def play_dumb_strat(data):
@@ -713,7 +748,13 @@ def play_dumb_strat(data):
 	# finding cards in hand is expensive. Only do it when necessary (first update and after playing a card)
 	if data["frame_data"]["needHandUpdate"] == True:
 		num_card_ided = calculate_current_cards_in_hand(data)
-		myprint("current hand : " + str(data["frame_data"]["hand"]),3)
+		if num_card_ided >= 4:
+			data["frame_data"]["needHandUpdate"] = False
+		myprint("Updated hand ided " + str(num_card_ided),1)
+	else:
+		num_card_ided = 4
+		
+	myprint("current hand : " + str(data["frame_data"]["hand"]),3)
 		
 	calculate_arena_diff(data)
 	count_pixel_per_side(data)
@@ -756,7 +797,7 @@ def play_dumb_strat(data):
 	#	play_card(giant, play_coord, data)
 	#	return
 		
-	if giant is None and balloon is not None and minion_horde is not None and data["frame_data"]["current_energy"] >= 9:
+	if num_card_ided >= 4 and giant is None and balloon is not None and minion_horde is not None and data["frame_data"]["current_energy"] >= 9:
 		if has_more_unit_on_the_left:
 			play_coord = right_bridge
 		else:
@@ -812,6 +853,19 @@ def play_dumb_strat(data):
 		else:
 			play_coord = right_bridge
 		play_card(zap, play_coord, data)
+		return
+	
+	cheap_card = None
+	if skelarmy is not None:
+		cheap_card = skelarmy
+	elif minion is not None:
+		cheap_card = minion
+	elif archer is not None:
+		cheap_card = archer
+	
+	if cheap_card is not None and data["frame_data"]["current_energy"] >= 9:
+		play_coord = (8,5)
+		play_card(cheap_card, play_coord, data)
 		return
 	
 		
@@ -902,7 +956,7 @@ def run_all(actions, data):
 			sleep(5)
 	
 	if "play" in actions:
-		max_game = 200
+		max_game = 100
 		num_game = 0
 		wait_card = 0
 		cur_time = datetime.datetime.now()
@@ -916,6 +970,12 @@ def run_all(actions, data):
 				data["frame_data"]["needHandUpdate"] = True
 				data["frame_data"]["arena_img"] = None
 				data["frame_data"]["played_giant"] = False
+				data["frame_data"]["hand"] = {
+					"card0" : "",
+					"card1" : "",
+					"card2" : "",
+					"card3" : ""
+				}
 				sleep(3)
 			elif cur_screen == "victoryscreen":
 				if "takeScreenshot" in actions:
@@ -927,18 +987,6 @@ def run_all(actions, data):
 				sleep(3)
 			elif cur_screen == "battlescreen":
 				play_dumb_strat(data)
-				#deltat = (cur_time - prev_time).total_seconds()
-				#myprint("deltat = {dt}, wait_card = {wt}".format(dt=deltat, wt=wait_card))
-				#wait_card -= deltat
-				#if wait_card <= 0:
-				#	click(*data["button_abs_coords"]["card0"])
-				#	sleep(0.1)
-				#	# front of my right tower
-				#	default_x = 15
-				#	default_y = 6
-				#	default_x, default_y = board_coord_to_mousepos(data, default_x, default_y)
-				#	click(default_x, default_y)
-				#	wait_card = 5.0
 			elif cur_screen == "changescreen":
 				click(*data["button_abs_coords"]["change_ok_btn"])
 				sleep(3)
