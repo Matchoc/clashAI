@@ -50,7 +50,7 @@ def click(x,y):
 	win32api.SetCursorPos((x,y))
 	sleep(.5)
 	win32api.mouse_event(win32con.MOUSEEVENTF_LEFTDOWN,x,y,0,0)
-	sleep(.5)
+	sleep(.2)
 	win32api.mouse_event(win32con.MOUSEEVENTF_LEFTUP,x,y,0,0)		
 
 def getWindowByTitle(title_text, exact = False):
@@ -455,7 +455,7 @@ def get_current_screen_name(data):
 		myprint("Error: Could not identify current screen !", 5)
 		return None
 	
-def searchCoordInScreenCV(pixelToFind, x, y, w, h, gwidth, gheight, hasAlpha):
+def searchCoordInScreenCV(pixelToFind, x, y, w, h, gwidth, gheight, hasAlpha, min_confidence=0.85):
 	a = ScopedTimer("searchCoordInScreenCV", 1)
 	if gwidth == -1 or (gwidth+x) > gScreenWidth:
 		gwidth = gScreenWidth-x
@@ -483,7 +483,7 @@ def searchCoordInScreenCV(pixelToFind, x, y, w, h, gwidth, gheight, hasAlpha):
 	myprint("min_val : " + str(min_val) + ", max_val : " + str(max_val) + ", min_loc : " + str(min_loc) + ", max_loc : " + str(max_loc))
 	
 	# arbitrary cutoff
-	if max_val < 0.85:
+	if max_val < min_confidence:
 		return None
 	
 	max_loc = list(max_loc)
@@ -568,7 +568,10 @@ def search_image(path, x=0, y=0, w=-1, h=-1):
 	btnpixeldata = convert_RGB_to_BGR(btnpixeldata)
 	myprint("search_image " + path)
 	myprint("x,y = " + str(x) + "," + str(y) + "w,h = " + str(w) + "," + str(h))
-	coord = searchCoordInScreenCV(btnpixeldata, x, y, width, height, w, h, hasAlpha)
+	confidence = 0.85
+	if "settingbtn" in path:
+		confidence = 0.70
+	coord = searchCoordInScreenCV(btnpixeldata, x, y, width, height, w, h, hasAlpha, confidence)
 	if coord is not None:
 		coord[0] -= int(width/2)
 		coord[1] -= int(height/2)
@@ -868,6 +871,11 @@ def play_dumb_strat(data):
 		play_card(cheap_card, play_coord, data)
 		return
 	
+def stuck_reset_app(data):
+	click(*data["button_abs_coords"]["close_app"])
+	sleep(10.0) # take it slow, don't want to fuck everything because I tried to move too fast and the computer froze up
+	click(*data["button_abs_coords"]["start_app"])
+	sleep(30.0)
 		
 def run_all(actions, data):
 	if data["use_paint"] == True:
@@ -954,22 +962,43 @@ def run_all(actions, data):
 			calculate_current_cards_in_hand(data)
 			myprint("current hand : " + str(data["frame_data"]["hand"]),3)
 			sleep(5)
+			
+	if "test_close_start_app" in actions:
+		cur_time = datetime.datetime.now()
+		prev_time = cur_time
+		data["frame_data"]["inactive_timer"] = 0
+		while True:
+			updateScreen(handle[0], False) # the first init/update screen will have set the window in the foreground. Saves 0.2ms every time we do a screenshot.
+			cur_screen = get_current_screen_name(data)
+			data["frame_data"]["inactive_timer"] += (cur_time - prev_time).total_seconds()
+			myprint("cur_scree : " + str(cur_screen) + ", inactive_timer : " + str(data["frame_data"]["inactive_timer"]))
+			if data["frame_data"]["inactive_timer"] > 5.0:
+				click(*data["button_abs_coords"]["close_app"])
+				sleep(3.0)
+				click(*data["button_abs_coords"]["start_app"])
+				
+			prev_time = cur_time
+			cur_time = datetime.datetime.now()
+				
 	
 	if "play" in actions:
-		max_game = 100
+		max_game = 200
 		num_game = 0
 		wait_card = 0
 		cur_time = datetime.datetime.now()
 		prev_time = cur_time
+		data["frame_data"]["inactive_timer"] = 0
 		while num_game < max_game:
 			updateScreen(handle[0], False) # the first init/update screen will have set the window in the foreground. Saves 0.2ms every time we do a screenshot.
 			cur_screen = get_current_screen_name(data)
+			data["frame_data"]["inactive_timer"] += (cur_time - prev_time).total_seconds()
 			#calculate_current_energy(data)
 			if cur_screen == "homescreen":
 				click(*data["button_abs_coords"]["battle"])
 				data["frame_data"]["needHandUpdate"] = True
 				data["frame_data"]["arena_img"] = None
 				data["frame_data"]["played_giant"] = False
+				data["frame_data"]["inactive_timer"] = 0
 				data["frame_data"]["hand"] = {
 					"card0" : "",
 					"card1" : "",
@@ -987,6 +1016,10 @@ def run_all(actions, data):
 				sleep(3)
 			elif cur_screen == "battlescreen":
 				play_dumb_strat(data)
+				# if we've been in the battlescreen for more than 15 min there's a serious problem
+				if data["frame_data"]["inactive_timer"] > 15 * 60:
+					data["frame_data"]["inactive_timer"] = 0
+					stuck_reset_app(data)
 			elif cur_screen == "changescreen":
 				click(*data["button_abs_coords"]["change_ok_btn"])
 				sleep(3)
@@ -1027,7 +1060,10 @@ if __name__ == '__main__':
 			#"test_battle_button",
 			#"test_energy",
 			#"start_battle",
+			#"test_close_start_app",
+			
 			"play",
+			
 			#"takeScreenshot",
 			"none" # put this here so I don't have to add , when I change list size.
 		],
@@ -1090,7 +1126,9 @@ if __name__ == '__main__':
 				"stacksidebar" : (29,61),
 				"deckstarcorner" : (520,600),
 				"arena_top_left" : (460,90),
-				"arena_bottom_right" : (843,566)
+				"arena_bottom_right" : (843,566),
+				"close_app" : (312,16),
+				"start_app" : (108,180)
 			},
 			"screen_colors" : {
 				"homescreen" : [83,208,255], # color of the pixel at button_coords/homescreen (BGR)
