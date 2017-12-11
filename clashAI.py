@@ -494,6 +494,62 @@ def searchCoordInScreenCV(pixelToFind, x, y, w, h, gwidth, gheight, hasAlpha, mi
 	#plt.show()
 	
 	return list(max_loc)
+	
+def searchAllCoordInScreenCV(pixelToFind, x, y, w, h, gwidth, gheight, hasAlpha, min_confidence=0.85):
+	a = ScopedTimer("searchAllCoordInScreenCV", 1)
+	if gwidth == -1 or (gwidth+x) > gScreenWidth:
+		gwidth = gScreenWidth-x
+	if gheight == -1 or (gheight+y) > gScreenHeight:
+		gheight = gScreenHeight-y
+		
+	#crop image
+	tmpScreen = gScreen.reshape(gScreenHeight, gScreenWidth, len(gScreen[0]))
+	tmpScreen = numpy.array(tmpScreen[y:y+gheight, x:x+gwidth,0:3], dtype=numpy.uint8)
+	tmpTemplate = numpy.array(pixelToFind, dtype=numpy.uint8)
+	if hasAlpha:
+		tmpTemplate = tmpTemplate[:,0:3]
+	tmpTemplate = tmpTemplate.reshape(h,w,3)
+	
+	#print("(x,y) = (" + str(x) + "," + str(y) + "), width,height = " + str(gwidth) + ", " + str(gheight))
+	#plt.imshow(tmpScreen)
+	#<matplotlib.image.AxesImage object at 0x04123CD0>
+	#plt.show()
+	
+	#methods = ['cv2.TM_CCOEFF', 'cv2.TM_CCOEFF_NORMED', 'cv2.TM_CCORR',
+    #        'cv2.TM_CCORR_NORMED', 'cv2.TM_SQDIFF', 'cv2.TM_SQDIFF_NORMED']
+	res = cv2.matchTemplate(tmpScreen,tmpTemplate,cv2.TM_CCOEFF_NORMED)
+	#plt.imshow(res)
+	#plt.show()
+	indices = numpy.argwhere(res > min_confidence)
+	myprint("indices = " + str(indices),3)
+	indices_centered = [ [
+		int(m[1] + x + (w / 2)) + gScreenOffsetL, 
+		int(m[0] + y + (h / 2)) + gScreenOffsetT]
+		for m in indices]
+			
+	myprint("indices_centered" + str(indices_centered),3)
+	return indices_centered
+	#### ITERATE THROUGH ALL VALUES > CONFIDENCE !!!!
+	
+	
+	
+	#min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(res)
+	
+	#myprint("min_val : " + str(min_val) + ", max_val : " + str(max_val) + ", min_loc : " + str(min_loc) + ", max_loc : " + str(max_loc))
+	
+	# arbitrary cutoff
+	#if max_val < min_confidence:
+	#	return None
+	
+	#max_loc = list(max_loc)
+	#max_loc[0] = int(max_loc[0] + x + (w / 2)) + gScreenOffsetL
+	#max_loc[1] = int(max_loc[1] + y + (h / 2)) + gScreenOffsetT
+	
+	#plt.imshow(res,cmap = 'gray')
+	#plt.show()
+	
+	#return list(max_loc)
+	
 
 def searchCoordInScreen(pixelToFind, x, y, w, h, gwidth, gheight, hasAlpha):
 	a = ScopedTimer("searchCoordInScreen", 1)
@@ -575,6 +631,23 @@ def search_image(path, x=0, y=0, w=-1, h=-1):
 	if coord is not None:
 		coord[0] -= int(width/2)
 		coord[1] -= int(height/2)
+	return coord
+	
+def search_all_image(path, x=0, y=0, w=-1, h=-1):
+	im = Image.open(path)
+	width, height = im.size
+	btnpixeldata = list(im.getdata())
+	hasAlpha = im.mode == "RGBA"
+	btnpixeldata = convert_RGB_to_BGR(btnpixeldata)
+	myprint("search all " + path)
+	myprint("x,y = " + str(x) + "," + str(y) + "w,h = " + str(w) + "," + str(h))
+	confidence = 0.85
+	coord = searchAllCoordInScreenCV(btnpixeldata, x, y, width, height, w, h, hasAlpha, confidence)
+	for c in coord:
+		c[0] -= int(width/2)
+		c[1] -= int(height/2)
+		
+	myprint("coord = " + str(coord),3)
 	return coord
 	
 def calculate_offset_from_appname_ref(data):
@@ -979,7 +1052,12 @@ def run_all(actions, data):
 				
 			prev_time = cur_time
 			cur_time = datetime.datetime.now()
-				
+		
+	if "test_find_all" in actions:
+		updateScreen(handle[0])
+		search_all_image(data["ref_img"]["red_level"][9])
+		coord = search_image(data["ref_img"]["red_level"][9])
+		myprint("single search coord = " + str(coord),3)
 	
 	if "play" in actions:
 		max_game = 200
@@ -1052,7 +1130,8 @@ if __name__ == '__main__':
 			#"takeScreenshot_test",
 			"update_screen",
 			"init",
-			#"wait_after_init",
+			"test_find_all",
+			"wait_after_init",
 			#"test_screen_diff",
 			#"test_cards",
 			#"find_screen",
@@ -1062,13 +1141,13 @@ if __name__ == '__main__':
 			#"start_battle",
 			#"test_close_start_app",
 			
-			"play",
+			#"play",
 			
 			#"takeScreenshot",
 			"none" # put this here so I don't have to add , when I change list size.
 		],
 		{
-			"use_paint" : False,
+			"use_paint" : True,
 			"current_arena": "arena_6", #could detect it eventually, for now should be ok
 			"ref_img" : {
 				"appname" : os.path.join(DATA_FOLDER, "ref", "appname.png"),
@@ -1091,6 +1170,17 @@ if __name__ == '__main__':
 					"goblin" : os.path.join(DATA_FOLDER, "ref", "cardgoblin.png"),
 					"minion_horde" : os.path.join(DATA_FOLDER, "ref", "cardminionhorde.png"),
 					"zap" : os.path.join(DATA_FOLDER, "ref", "cardzap.png")
+				},
+				"red_level" : {
+					1 : os.path.join(DATA_FOLDER, "ref", "red-level01.png"),
+					2 : os.path.join(DATA_FOLDER, "ref", "red-level02.png"),
+					3 : os.path.join(DATA_FOLDER, "ref", "red-level03.png"),
+					4 : os.path.join(DATA_FOLDER, "ref", "red-level04.png"),
+					5 : os.path.join(DATA_FOLDER, "ref", "red-level05.png"),
+					6 : os.path.join(DATA_FOLDER, "ref", "red-level06.png"),
+					7 : os.path.join(DATA_FOLDER, "ref", "red-level07.png"),
+					8 : os.path.join(DATA_FOLDER, "ref", "red-level08.png"),
+					9 : os.path.join(DATA_FOLDER, "ref", "red-level09.png")
 				}
 			},
 			"button_coords" : {
