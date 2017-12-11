@@ -950,6 +950,12 @@ def stuck_reset_app(data):
 	click(*data["button_abs_coords"]["start_app"])
 	sleep(30.0)
 		
+def pretend(img):
+	global gScreenNumpy
+	global gScreenAlphaNumpy
+	pass
+	
+		
 def run_all(actions, data):
 	if data["use_paint"] == True:
 		handle = getWindowByTitle("Paint", False)
@@ -967,6 +973,8 @@ def run_all(actions, data):
 	
 	if "update_screen" in actions:
 		updateScreen(handle[0])
+		if "init_with" in actions and actions["init_with"] != "":
+			pretend(actions["init_with"])
 	
 	if "init" in actions:
 		data["frame_data"] = {}
@@ -1148,6 +1156,7 @@ if __name__ == '__main__':
 		],
 		{
 			"use_paint" : True,
+			"init_with" : "",#os.path.join(DATA_FOLDER, "screenshots", "1 (1).png")
 			"current_arena": "arena_6", #could detect it eventually, for now should be ok
 			"ref_img" : {
 				"appname" : os.path.join(DATA_FOLDER, "ref", "appname.png"),
