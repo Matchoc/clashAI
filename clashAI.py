@@ -35,7 +35,7 @@ RED = 2
 GREEN = 1
 BLUE = 0
 MAX_COLOR_DIFF = 30 # 0 to 255
-PRINT_LEVEL=3
+PRINT_LEVEL=0
 def myprint(msg, level=0):
 	if (level >= PRINT_LEVEL):
 		sys.stdout.buffer.write((str(msg) + "\n").encode('UTF-8'))
@@ -126,7 +126,7 @@ def updateScreen(hwnd = None, wait_focus=True):
 	
 	#win32gui.ReleaseDC(win32gui.GetDesktopWindow(), hDC)
 	
-	myprint("screenWidth : " + str(gScreenWidth) + ", screenHeight : " + str(gScreenHeight) + ", offsetL : " + str(gScreenOffsetL)  + ", offsetT : " + str(gScreenOffsetT))
+	myprint("screenWidth : " + str(gScreenWidth) + ", screenHeight : " + str(gScreenHeight) + ", offsetL : " + str(gScreenOffsetL)  + ", offsetT : " + str(gScreenOffsetT) + ", ndim : " + str(gScreen.ndim))
 
 def gScreenToNumpy():
 	global gScreenNumpy
@@ -463,6 +463,7 @@ def searchCoordInScreenCV(pixelToFind, x, y, w, h, gwidth, gheight, hasAlpha, mi
 		gheight = gScreenHeight-y
 		
 	#crop image
+	myprint("gScreen dim = " + str(gScreen.ndim),1)
 	tmpScreen = gScreen.reshape(gScreenHeight, gScreenWidth, len(gScreen[0]))
 	tmpScreen = numpy.array(tmpScreen[y:y+gheight, x:x+gwidth,0:3], dtype=numpy.uint8)
 	tmpTemplate = numpy.array(pixelToFind, dtype=numpy.uint8)
@@ -950,9 +951,32 @@ def stuck_reset_app(data):
 	click(*data["button_abs_coords"]["start_app"])
 	sleep(30.0)
 		
-def pretend(img):
+def pretend(path):
+	global gScreen
+	global gScreenAlpha
 	global gScreenNumpy
 	global gScreenAlphaNumpy
+	
+	im = Image.open(path)
+	width, height = im.size
+	myprint("width = " + str(width) + " height = " + str(height),1)
+	btnpixeldata = list(im.getdata())
+	hasAlpha = im.mode == "RGBA"
+	btnpixeldata = convert_RGB_to_BGR(btnpixeldata)
+	
+	tmpTemplate = numpy.array(btnpixeldata, dtype=numpy.uint8)
+	if hasAlpha:
+		tmpTemplateNoAlpha = tmpTemplate[:,0:3]
+		tmpTemplateAlpha = tmpTemplate[:,0:4]
+	#tmpTemplateNoAlpha = tmpTemplateNoAlpha.reshape(height,width,3)
+	#tmpTemplateAlpha = tmpTemplateAlpha.reshape(height,width,4)
+	
+	gScreenNumpy = tmpTemplateNoAlpha
+	gScreenAlphaNumpy = tmpTemplateAlpha
+	
+	gScreen = tmpTemplateAlpha
+	gScreenAlpha = tmpTemplateAlpha
+	
 	pass
 	
 		
@@ -973,8 +997,9 @@ def run_all(actions, data):
 	
 	if "update_screen" in actions:
 		updateScreen(handle[0])
-		if "init_with" in actions and actions["init_with"] != "":
-			pretend(actions["init_with"])
+		if "pretend" in actions:
+			myprint("pretend",1)
+			pretend(data["init_with"])
 	
 	if "init" in actions:
 		data["frame_data"] = {}
@@ -1137,11 +1162,12 @@ if __name__ == '__main__':
 	run_all([
 			#"takeScreenshot_test",
 			"update_screen",
+			"pretend",
 			"init",
-			"test_find_all",
-			"wait_after_init",
+			#"test_find_all",
+			#"wait_after_init",
 			#"test_screen_diff",
-			#"test_cards",
+			"test_cards",
 			#"find_screen",
 			#"test_play_area",
 			#"test_battle_button",
@@ -1156,7 +1182,7 @@ if __name__ == '__main__':
 		],
 		{
 			"use_paint" : True,
-			"init_with" : "",#os.path.join(DATA_FOLDER, "screenshots", "1 (1).png")
+			"init_with" : os.path.join(DATA_FOLDER, "screenshots", "temp.png"),
 			"current_arena": "arena_6", #could detect it eventually, for now should be ok
 			"ref_img" : {
 				"appname" : os.path.join(DATA_FOLDER, "ref", "appname.png"),
