@@ -2,18 +2,25 @@ import sys
 import os
 os.environ["path"] = os.path.dirname(sys.executable) + ";" + os.environ["path"]
 import glob
+import win32gui
+import win32ui
+import win32con
+import win32api
 import operator
 import numpy
 import json
 import scipy.ndimage
+import multiprocessing
+import matplotlib.pyplot as plt
 from PIL import Image
 
-PRINT_LEVEL=0
+PRINT_LEVEL=4
 def myprint(msg, level=0):
 	if (level >= PRINT_LEVEL):
 		sys.stdout.buffer.write((str(msg) + "\n").encode('UTF-8'))
 
 def open_image(path, data):
+	myprint("open image = " + path)
 	im = Image.open(path)
 	width, height = im.size
 	myprint("width = " + str(width) + " height = " + str(height),1)
@@ -74,7 +81,7 @@ def collectSurroundingData(pixIndex, collection, binaryList, size):
 		minX = -1
 		minY = -1
 		for index in newCluster:
-			coord = toXYCoord(index, data["size"][0])
+			coord = toXYCoord(index, size[0])
 			if minX < 0 or minX > coord[0]:
 				minX = coord[0]
 				minY = coord[1]
@@ -121,14 +128,82 @@ def clusterIndexToClusterCoord(cluster):
 	return clustercoord
 
 
-if __name__ == '__main__':
+def drawClusters(data):
+	counter = 0
+	for cluster in data["sprites"]:
+		minX = data["size"][0]
+		maxX = 0
+		minY = data["size"][1]
+		maxY = 0
+		for index in cluster["clusterIndexes"]:
+			coord = toXYCoord(index, data["size"][0])
+			if minX > coord[0]:
+				minX = coord[0]
+			if maxX < coord[0]:
+				maxX = coord[0]
+			if minY > coord[1]:
+				minY = coord[1]
+			if maxY < coord[1]:
+				maxY = coord[1]
+			
+		img2d = data["source"].reshape(data["size"][1], data["size"][0], len(data["source"][0]))
+		subimg = img2d[minY:maxY,minX:maxX,:]
+		
+		myprint("save minx {}, maxx {}, miny {}, maxy {}".format(minX, maxX, minY, maxY))
+		
+		if maxX - minX > 0 and maxY - minY > 0:
+			saveBitmap(subimg, os.path.join(data["outputdir"], "{:03}.png".format(counter)))
+		else:
+			myprint("skipped {} in {} because size is invalid {}, {}, {}, {}".format(counter, data["outputdir"], minX, maxX, minY, maxY),5)
+		
+		counter = counter + 1
+		#subimg = subimg / 255
+		#plt.imshow(subimg)
+		#plt.show()
+		
+def run(file):
+	myprint("Processing : " + file,5)
+	sys.stdout.flush()
 	data = {}
-	sheet_name = "chr_lava_pups_tex"
-	open_image(os.path.join("sprites", sheet_name + ".png"), data)
-	
-	outputdir = os.path.join("sprites", sheet_name)
+	sheet_name = file[:-4]
+	open_image(sheet_name + ".png", data)
+	outputdir = os.path.join(sheet_name)
 	if not os.path.isdir(outputdir):
 		os.makedirs(outputdir)
-	
+	data["outputdir"] = outputdir
 	collectCells(data)
+	drawClusters(data)
+	myprint("Done : " + file,5)
+	sys.stdout.flush()
+		
+def saveBitmap(img, output):
+	im = Image.fromarray(img)
+	im.save(output)
+	
+if __name__ == '__main__':
+	#data = {}
+	#sheet_name = "chr_lava_pups_tex"
+	
+	#open_image(os.path.join("sprites", sheet_name + ".png"), data)
+	
+	#outputdir = os.path.join("sprites", sheet_name)
+	#if not os.path.isdir(outputdir):
+	#	os.makedirs(outputdir)
+	#data["outputdir"] = outputdir
+	
+	#collectCells(data)
+	
+	#drawClusters(data)
+	
+	#run("sprites\\arena_training_tex.png")
+	
+	sprites = glob.glob(os.path.join("sprites","*.png"))
+	NUM_PROC = 4
+	p = multiprocessing.Pool(NUM_PROC)
+	r = p.map(run, sprites)
+	
+	
+	
+		
+	
 	
