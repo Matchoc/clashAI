@@ -15,6 +15,9 @@ import matplotlib.pyplot as plt
 from PIL import Image
 
 PRINT_LEVEL=4
+MIN_COLOR_SUM = 50
+MIN_CLUSTER_SIZE = 30 * 30
+CV_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "externals", "vc12", "bin"))
 def myprint(msg, level=0):
 	if (level >= PRINT_LEVEL):
 		sys.stdout.buffer.write((str(msg) + "\n").encode('UTF-8'))
@@ -76,7 +79,7 @@ def collectSurroundingData(pixIndex, collection, binaryList, size):
 			if isIndexElement(indexl, binaryList) and not indexl in newCluster:
 				indexes.add(indexl)
 
-	minClusterSize = 5
+	minClusterSize = MIN_CLUSTER_SIZE
 	if len(newCluster) > minClusterSize:
 		minX = -1
 		minY = -1
@@ -96,7 +99,7 @@ def isMatchAllColors(binaryList, curIndex, newIndex):
 	return binaryList[curIndex][RED] == binaryList[newIndex][RED] and binaryList[curIndex][GREEN] == binaryList[newIndex][GREEN] and binaryList[curIndex][BLUE] == binaryList[newIndex][BLUE]
 		
 def isIndexElement(index, binaryList):
-	if index < 0 or index >= len(binaryList) or (numpy.sum(binaryList[index]) <= 0):
+	if index < 0 or index >= len(binaryList) or (numpy.sum(binaryList[index]) <= MIN_COLOR_SUM):
 		return False
 	return True
 			
@@ -115,7 +118,7 @@ def collectCells(data):
 	for y in range(start[1], end[1]):
 		for x in range(start[0], end[0]):
 			index = toPixIndex([x,y], data["size"][0])
-			if numpy.sum(data["source"][index]) > 0 and not isIndexInList(index, data["sprites"]):
+			if numpy.sum(data["source"][index]) > MIN_COLOR_SUM and not isIndexInList(index, data["sprites"]):
 				collectSurroundingData(index, data["sprites"], data["source"], data["size"])
 				
 	myprint("data[sprites] len = " + str(len(data["sprites"])))
@@ -180,6 +183,36 @@ def saveBitmap(img, output):
 	im = Image.fromarray(img)
 	im.save(output)
 	
+def generateTrainingDesc(sprites):
+	for file in sprites:
+		pos_sheet_name = file[:-4]
+		pos_png = glob.glob(os.path.join(pos_sheet_name, "*.png"))
+		posdesc = os.path.join(pos_sheet_name, "positive.txt")
+		negdesc = os.path.join(pos_sheet_name, "negative.txt")
+		
+		pos_list = []
+		for pos_file in pos_png:
+			with Image.open(pos_file) as img:
+				width, height = img.size
+			pos_list.append("{image} 1 0 0 {width} {height}".format(image=pos_file, width=width, height=height))
+			
+		neg_list = []
+		for sprite in sprites:
+			neg_sheet_name = sprite[:-4]
+			if neg_sheet_name != pos_sheet_name:
+				neg_png = glob.glob(os.path.join(neg_sheet_name, "*.png"))
+				for neg_file in neg_png:
+					neg_file = os.path.abspath(neg_file)
+					final_path = os.path.relpath(neg_file, CV_PATH)
+					neg_list.append(final_path)
+		
+		#with open(posdesc, 'w') as f:
+		numpy.savetxt(posdesc, pos_list, fmt='%s', newline='\r\n')
+		numpy.savetxt(negdesc, neg_list, fmt='%s', newline='\r\n')
+		#with open(negdesc, 'w') as f:
+		#f.write("%s\r\n" % neg_list)
+					
+	
 if __name__ == '__main__':
 	#data = {}
 	#sheet_name = "chr_lava_pups_tex"
@@ -201,6 +234,8 @@ if __name__ == '__main__':
 	NUM_PROC = 4
 	p = multiprocessing.Pool(NUM_PROC)
 	r = p.map(run, sprites)
+	
+	generateTrainingDesc(sprites)
 	
 	
 	
