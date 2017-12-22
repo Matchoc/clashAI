@@ -207,11 +207,14 @@ def generateTrainingDesc(sprites):
 					neg_list.append(final_path)
 		
 		#with open(posdesc, 'w') as f:
+		myprint(str(pos_list),5)
 		numpy.savetxt(posdesc, pos_list, fmt='%s', newline='\r\n')
 		numpy.savetxt(negdesc, neg_list, fmt='%s', newline='\r\n')
 		#with open(negdesc, 'w') as f:
 		#f.write("%s\r\n" % neg_list)
-					
+	
+	
+	
 	
 if __name__ == '__main__':
 	#data = {}
@@ -230,12 +233,12 @@ if __name__ == '__main__':
 	
 	#run("sprites\\arena_training_tex.png")
 	
-	sprites = glob.glob(os.path.join("sprites","*.png"))
-	NUM_PROC = 4
-	p = multiprocessing.Pool(NUM_PROC)
-	r = p.map(run, sprites)
+	#sprites = glob.glob(os.path.join("sprites","*.png"))
+	#NUM_PROC = 4
+	#p = multiprocessing.Pool(NUM_PROC)
+	#r = p.map(run, sprites)
 	
-	generateTrainingDesc(sprites)
+	generateTrainingDesc([r"G:\Perso\projects\clashAI\externals\vc12\bin\positive\images.png", r"G:\Perso\projects\clashAI\externals\vc12\bin\negative\images.png"])
 	
 	
 	
