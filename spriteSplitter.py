@@ -6,6 +6,8 @@ import win32gui
 import win32ui
 import win32con
 import win32api
+import datetime
+import dateutil.relativedelta
 import operator
 import numpy
 import json
@@ -14,15 +16,32 @@ import multiprocessing
 import matplotlib.pyplot as plt
 from PIL import Image
 
-PRINT_LEVEL=4
-MIN_COLOR_SUM = 50
-MIN_CLUSTER_SIZE = 30 * 30
+PRINT_LEVEL=5
+MIN_COLOR_SUM = 130
+MIN_CLUSTER_SIZE = 600 #(~25x25 pixel) 30x30 looked good but golemite are too small
 CV_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "externals", "vc12", "bin"))
 def myprint(msg, level=0):
 	if (level >= PRINT_LEVEL):
 		sys.stdout.buffer.write((str(msg) + "\n").encode('UTF-8'))
+		
+class ScopedTimer:
+	totals = {}
+	def __init__(self, name, level=3):
+		self.starttime = datetime.datetime.now()
+		self.name = name
+		self.level = level
+		
+	def __del__(self):
+		delta = datetime.datetime.now() - self.starttime
+		if self.name not in ScopedTimer.totals:
+			ScopedTimer.totals[self.name] = datetime.timedelta(0)
+		ScopedTimer.totals[self.name] += delta
+		myprint("{name} : {delta} / {total}".format(name=self.name, delta=str(delta), total=str(ScopedTimer.totals[self.name])), self.level)
+		#myprint(str(self.name) + " : " + str(delta),self.level)
+
 
 def open_image(path, data):
+	a = ScopedTimer("open_image")
 	myprint("open image = " + path)
 	im = Image.open(path)
 	width, height = im.size
@@ -40,11 +59,13 @@ def open_image(path, data):
 	data["size"] = [width, height]
 	
 def toPixIndex(coord, w):
+	a = ScopedTimer("toPixIndex", 0)
 	if coord[0] >= w or coord[0] < 0 or coord[1] < 0:
 		return -1
 	return (coord[1] * w) + coord[0]
 	
 def toXYCoord(pixIndex, w):
+	a = ScopedTimer("toXYCoord", 0)
 	y = int(pixIndex / w)
 	floaty = pixIndex / w
 	fraction = floaty - y
@@ -53,6 +74,7 @@ def toXYCoord(pixIndex, w):
 	return [x, y]
 
 def collectSurroundingData(pixIndex, collection, binaryList, size):
+	a = ScopedTimer("collectSurroundingData", 3)
 	indexes = set()
 	indexes.add(pixIndex)
 	clusterinfo = {}
@@ -79,38 +101,29 @@ def collectSurroundingData(pixIndex, collection, binaryList, size):
 			if isIndexElement(indexl, binaryList) and not indexl in newCluster:
 				indexes.add(indexl)
 
-	minClusterSize = MIN_CLUSTER_SIZE
-	if len(newCluster) > minClusterSize:
-		minX = -1
-		minY = -1
-		for index in newCluster:
-			coord = toXYCoord(index, size[0])
-			if minX < 0 or minX > coord[0]:
-				minX = coord[0]
-				minY = coord[1]
-		#perim = calculatePerimeter(newCluster, [minX, minY], False)
-		#clustercoord = clusterIndexToClusterCoord(newCluster)
-		clusterinfo["clusterIndexes"] = newCluster
-		#clusterinfo["clusterPerimeter"] = perim
-		#clusterinfo["clusterCoord"] = clustercoord
-		collection.append(clusterinfo)
+	#minClusterSize = MIN_CLUSTER_SIZE
+	#if len(newCluster) > minClusterSize:
+	myprint("new cluster = {}".format(str(newCluster)),3)
+	clusterinfo["clusterIndexes"] = newCluster
+	collection.append(clusterinfo)
+	#else:
+	#	myprint("cluster too small {}".format(len(newCluster)),3)
 
 def isMatchAllColors(binaryList, curIndex, newIndex):
 	return binaryList[curIndex][RED] == binaryList[newIndex][RED] and binaryList[curIndex][GREEN] == binaryList[newIndex][GREEN] and binaryList[curIndex][BLUE] == binaryList[newIndex][BLUE]
 		
 def isIndexElement(index, binaryList):
+	a = ScopedTimer("isIndexElement", 1)
 	if index < 0 or index >= len(binaryList) or (numpy.sum(binaryList[index]) <= MIN_COLOR_SUM):
 		return False
 	return True
 			
 def isIndexInList(index, listOfList):
-	for sublist in listOfList:
-		if index in sublist["clusterIndexes"]:
-			return True
-			
-	return False
+	a = ScopedTimer("isIndexInList", 2)
+	return any(index in l["clusterIndexes"] for l in listOfList)
 	
 def collectCells(data):
+	a = ScopedTimer("collectCells", 3)
 	myprint("Collect Cells clusters")
 	data["sprites"] = []
 	start = [0,0]
@@ -118,12 +131,16 @@ def collectCells(data):
 	for y in range(start[1], end[1]):
 		for x in range(start[0], end[0]):
 			index = toPixIndex([x,y], data["size"][0])
+			myprint("processing ({x},{y})".format(x=x, y=y),2)
 			if numpy.sum(data["source"][index]) > MIN_COLOR_SUM and not isIndexInList(index, data["sprites"]):
 				collectSurroundingData(index, data["sprites"], data["source"], data["size"])
+			else:
+				myprint("skipped ({x},{y})".format(x=x,y=y),2)
 				
 	myprint("data[sprites] len = " + str(len(data["sprites"])))
 
 def clusterIndexToClusterCoord(cluster):
+	a = ScopedTimer("clusterIndexToClusterCoord")
 	clustercoord = set()
 	for index in cluster:
 		clustercoord.add(tuple(toXYCoord(index, BOARD_SIZE[0])))
@@ -132,8 +149,12 @@ def clusterIndexToClusterCoord(cluster):
 
 
 def drawClusters(data):
+	a = ScopedTimer("drawClusters")
 	counter = 0
 	for cluster in data["sprites"]:
+		if len(cluster["clusterIndexes"]) < MIN_CLUSTER_SIZE:
+			myprint("cluster too small {}".format(len(cluster["clusterIndexes"])), 4)
+			continue
 		minX = data["size"][0]
 		maxX = 0
 		minY = data["size"][1]
@@ -165,6 +186,7 @@ def drawClusters(data):
 		#plt.show()
 		
 def run(file):
+	a = ScopedTimer("run")
 	myprint("Processing : " + file,5)
 	sys.stdout.flush()
 	data = {}
@@ -180,6 +202,7 @@ def run(file):
 	sys.stdout.flush()
 		
 def saveBitmap(img, output):
+	a = ScopedTimer("saveBitmap")
 	im = Image.fromarray(img)
 	im.save(output)
 	
@@ -194,7 +217,8 @@ def generateTrainingDesc(sprites):
 		for pos_file in pos_png:
 			with Image.open(pos_file) as img:
 				width, height = img.size
-			pos_list.append("{image} 1 0 0 {width} {height}".format(image=pos_file, width=width, height=height))
+			stripped_filename = os.path.basename(pos_file)
+			pos_list.append("{image} 1 0 0 {width} {height}".format(image=stripped_filename, width=width, height=height))
 			
 		neg_list = []
 		for sprite in sprites:
@@ -212,7 +236,7 @@ def generateTrainingDesc(sprites):
 		#with open(negdesc, 'w') as f:
 		#f.write("%s\r\n" % neg_list)
 					
-	
+
 if __name__ == '__main__':
 	#data = {}
 	#sheet_name = "chr_lava_pups_tex"
@@ -228,12 +252,12 @@ if __name__ == '__main__':
 	
 	#drawClusters(data)
 	
-	#run("sprites\\arena_training_tex.png")
+	#run("sprites\\chr_golemite_lowres_tex.png")
 	
-	sprites = glob.glob(os.path.join("sprites","*.png"))
-	NUM_PROC = 4
-	p = multiprocessing.Pool(NUM_PROC)
-	r = p.map(run, sprites)
+	sprites = glob.glob(os.path.join("data", "sprites","*.png"))
+	#NUM_PROC = 4
+	#p = multiprocessing.Pool(NUM_PROC)
+	#r = p.map(run, sprites)
 	
 	generateTrainingDesc(sprites)
 	

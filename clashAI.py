@@ -30,12 +30,15 @@ from PIL import Image
 #from sklearn.preprocessing import StandardScaler
 #from sklearn.metrics import label_ranking_average_precision_score
 
+EXTERNAL_FOLDER = "externals"
+SAMPLE_TRAINER = os.path.join(EXTERNAL_FOLDER, "vc12", "bin", "opencv_createsamples.exe")
+CASCADE_TRAINER = os.path.join(EXTERNAL_FOLDER, "vc12", "bin", "opencv_traincascade.exe")
 DATA_FOLDER = "data"
 RED = 2
 GREEN = 1
 BLUE = 0
 MAX_COLOR_DIFF = 30 # 0 to 255
-PRINT_LEVEL=0
+PRINT_LEVEL=3
 def myprint(msg, level=0):
 	if (level >= PRINT_LEVEL):
 		sys.stdout.buffer.write((str(msg) + "\n").encode('UTF-8'))
@@ -977,8 +980,33 @@ def pretend(path):
 	gScreen = tmpTemplateAlpha
 	gScreenAlpha = tmpTemplateAlpha
 	
-	pass
+def shell(cmd):
+	myprint("---------------------------------",3)
+	myprint("OS : " + cmd,4)
+	myprint("---------------------------------",3)
+	return os.system(cmd)
 	
+def train_unit_ML(data):
+	unit_list_path = os.path.join(DATA_FOLDER, "training_unit_list.json")
+	with open(unit_list_path, 'r') as jsonfile:
+		unit_list_json = json.load(jsonfile)
+	
+	output_base = os.path.join(DATA_FOLDER, "training")
+	for folder in unit_list_json:
+		#folder = r"data\sprites\chr_giant_tex"
+		output_vec = os.path.join(output_base, os.path.basename(folder) + ".bin")
+		#externals\vc12\bin\opencv_createsamples.exe -vec data\sprites\chr_giant_tex\sample.bin -info data\sprites\chr_giant_tex\positive.txt -bg data\sprites\chr_giant_tex\negative.txt -num 234
+		num_lines = sum(1 for line in open(os.path.join(folder, "positive.txt")))
+		cmd = "{opencv} -vec {vec} -info {pos} -bg {neg} -num {count}".format(opencv=SAMPLE_TRAINER, vec=output_vec, pos=os.path.join(folder, "positive.txt"), neg=os.path.join(folder, "negative.txt"), count=num_lines)
+		shell(cmd)
+		
+		#externals\vc12\bin\opencv_traincascade.exe -data chr_giant_tex -vec data\training\chr_giant_tex.bin -bg data\sprites\chr_giant_tex\negative.txt -numPos 234 -numNeg 500
+		output_cascade = os.path.join(output_base, os.path.basename(folder))
+		if not os.path.isdir(output_cascade):
+			os.makedirs(output_cascade)
+		
+		cmd = "{opencv} -data {folder} -vec {bin} -bg {neg} -numPos {numPos} -numNeg {numNeg}".format(opencv=CASCADE_TRAINER, folder=output_cascade, bin=output_vec, neg=os.path.join(folder, "negative.txt"), numPos=num_lines, numNeg=1000)
+		shell(cmd)
 		
 def run_all(actions, data):
 	if data["use_paint"] == True:
@@ -986,8 +1014,11 @@ def run_all(actions, data):
 	else:
 		handle = getWindowByTitle("BlueStacks", False)
 		
-	if handle is None or handle[0] is None:
+	if handle is None or len(handle) <= 0 or handle[0] is None:
 		myprint("Could not find window !", 5)
+		
+	if "train_unit_ML" in actions:
+		train_unit_ML(data)
 	
 	if "takeScreenshot_test" in actions:
 		while True:
@@ -1026,16 +1057,11 @@ def run_all(actions, data):
 			sleep(10)
 		
 	if "find_screen" in actions:
-		cur_screen = get_current_screen_name(data)
-		myprint("current screen name = " + cur_screen,2)
-		
-		if "start_battle" in actions:
-			if cur_screen == "homescreen":
-				click(*data["button_abs_coords"]["battle"])
-				sleep(3)
-				updateScreen(handle[0])
-				cur_screen = get_current_screen_name(data)
-				myprint("battle should be starting, current screen : " + str(cur_screen))
+		while True:
+			updateScreen(handle[0])
+			cur_screen = get_current_screen_name(data)
+			myprint("current screen name = " + str(cur_screen),2)
+			sleep(5)
 				
 	if "test_play_area" in actions:
 		sleep(5)
@@ -1093,7 +1119,7 @@ def run_all(actions, data):
 		myprint("single search coord = " + str(coord),3)
 	
 	if "play" in actions:
-		max_game = 200
+		max_game = 300
 		num_game = 0
 		wait_card = 0
 		cur_time = datetime.datetime.now()
@@ -1129,6 +1155,7 @@ def run_all(actions, data):
 				play_dumb_strat(data)
 				# if we've been in the battlescreen for more than 15 min there's a serious problem
 				if data["frame_data"]["inactive_timer"] > 15 * 60:
+					myprint("Error ! App Stuck for {}, attempting reset".format(data["frame_data"]["inactive_timer"]),5)
 					data["frame_data"]["inactive_timer"] = 0
 					stuck_reset_app(data)
 			elif cur_screen == "changescreen":
@@ -1161,27 +1188,27 @@ if __name__ == '__main__':
 	
 	run_all([
 			#"takeScreenshot_test",
+			#"train_unit_ML",
 			"update_screen",
-			"pretend",
+			#"pretend",
 			"init",
 			#"test_find_all",
 			#"wait_after_init",
 			#"test_screen_diff",
-			"test_cards",
+			#"test_cards",
 			#"find_screen",
 			#"test_play_area",
 			#"test_battle_button",
 			#"test_energy",
-			#"start_battle",
 			#"test_close_start_app",
 			
-			#"play",
+			"play",
 			
 			#"takeScreenshot",
 			"none" # put this here so I don't have to add , when I change list size.
 		],
 		{
-			"use_paint" : True,
+			"use_paint" : False,
 			"init_with" : os.path.join(DATA_FOLDER, "screenshots", "temp.png"),
 			"current_arena": "arena_6", #could detect it eventually, for now should be ok
 			"ref_img" : {
@@ -1198,13 +1225,13 @@ if __name__ == '__main__':
 					"archer" : os.path.join(DATA_FOLDER, "ref", "cardarcher.png"),
 					"balloon" : os.path.join(DATA_FOLDER, "ref", "cardballoon.png"),
 					"fireball" : os.path.join(DATA_FOLDER, "ref", "cardfireball.png"),
-					"giant" : os.path.join(DATA_FOLDER, "ref", "cardgiant.png"),
+					"giant" : os.path.join(DATA_FOLDER, "ref", "cardgiant2.png"),
 					"goblinspear" : os.path.join(DATA_FOLDER, "ref", "cardgoblinspear.png"),
 					"minion" : os.path.join(DATA_FOLDER, "ref", "cardminion.png"),
 					"valkyrie" : os.path.join(DATA_FOLDER, "ref", "cardvalkyrie.png"),
 					"goblin" : os.path.join(DATA_FOLDER, "ref", "cardgoblin.png"),
 					"minion_horde" : os.path.join(DATA_FOLDER, "ref", "cardminionhorde.png"),
-					"zap" : os.path.join(DATA_FOLDER, "ref", "cardzap.png")
+					"zap" : os.path.join(DATA_FOLDER, "ref", "cardzap2.png")
 				},
 				"red_level" : {
 					1 : os.path.join(DATA_FOLDER, "ref", "red-level01.png"),
@@ -1230,14 +1257,14 @@ if __name__ == '__main__':
 				#"settingbtn_noside" : (772,81),
 				#"shop_side" : (442,668),
 				#"shop_noside" : (442,668),
-				"homescreen" : (584,460), #(652,453),
-				"battlescreen" : (683,598), #(711,598),
-				"victoryscreen" : (616,631), #(673,631),
+				"homescreen" : (584,435), #(652,453),
+				"battlescreen" : (683,608), #(711,598),
+				"victoryscreen" : (616,625), #(673,631),
 				"changescreen" : (513,695),
 				"change_ok_btn" : (644,691),
 				"limitscreen" : (523,326),
 				"limit_ok_btn" : (648,470),
-				"energy0" : (557,706),
+				"energy0" : (561,706),
 				"energy1" : (581,706),
 				"energy2" : (599,706),
 				"energy3" : (626,706),
@@ -1247,7 +1274,7 @@ if __name__ == '__main__':
 				"energy7" : (735,706),
 				"energy8" : (763,706),
 				"energy9" : (790,706),
-				"energy10" : (825,706),
+				"energy10" : (816,706),
 				"stacksidebar" : (29,61),
 				"deckstarcorner" : (520,600),
 				"arena_top_left" : (460,90),
@@ -1257,7 +1284,7 @@ if __name__ == '__main__':
 			},
 			"screen_colors" : {
 				"homescreen" : [83,208,255], # color of the pixel at button_coords/homescreen (BGR)
-				"battlescreen" : [101,135,166],
+				"battlescreen" : [79,109,141],
 				"victoryscreen" : [255,187,105],
 				"energybar" : [244,136,240],
 				"energybar_high" : [255,191,255],
@@ -1272,9 +1299,9 @@ if __name__ == '__main__':
 				"height":696
 			},
 			"drop_area" : {
-				"top":349,
-				"left":492,
-				"width":314,
+				"top":352,
+				"left":495,
+				"width":323,
 				"height":209
 			},
 			"grid_size" : (18,15)
