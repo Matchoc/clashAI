@@ -1,0 +1,1 @@
+opencv_createsamples -info info/info.lst -num 11 -w 20 -h 20 -vec positives.vec

@@ -1,0 +1,1 @@
+opencv_createsamples -img ./positive/images/000.png -bg ./negative/neg_desc.txt -info ./info/info.lst -maxxangle 0.5 -maxyangle 0.5 -maxzangle 0.5
