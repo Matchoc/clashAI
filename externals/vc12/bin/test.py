@@ -30,6 +30,11 @@ from PIL import Image
 #from sklearn.preprocessing import StandardScaler
 #from sklearn.metrics import label_ranking_average_precision_score
 
+PRINT_LEVEL=0
+def myprint(msg, level=0):
+	if (level >= PRINT_LEVEL):
+		sys.stdout.buffer.write((str(msg) + "\n").encode('UTF-8'))
+		
 def open_image(path, data):
 	im = Image.open(path)
 	width, height = im.size
@@ -63,17 +68,47 @@ def generate_smaple_pos():
 	for file in bgfiles:
 		refim = cv2.imread(file)
 		cv2.imwrite(file + "bleh.png", refim[31:31+696,452:452+391])
+	
+def shell(cmd):
+	myprint("---------------------------------",3)
+	myprint("OS : " + cmd,4)
+	myprint("---------------------------------",3)
+	return os.system(cmd)
+	
+def generate_all_lava_pup():
+	#opencv_createsamples -img ./positive/images/000.png -bg ./negative/neg_desc.txt -info %1 -maxxangle 0.5 -maxyangle 0.5 -maxzangle 0.5
+	str = "opencv_createsamples -img {image} -bg ./negative/neg_desc.txt -info ./info/{output} -maxxangle 0.0 -maxyangle 0.0 -maxzangle 0.0 -w 10 -h 10"
+	images = glob.glob(os.path.join("positive", "images", "*.png"))
+	base_output = "list{count}.lst"
+	count = 0
+	for image in images:
+		output = base_output.format(count=count)
+		cmd = str.format(image=image, output=output)
+		shell(cmd)
+		count += 1
 		
+def collapse_list():
+	files = glob.glob( os.path.join("info", "*.lst") )
+	with open(os.path.join("info", "all.lst"), 'w') as outfile:
+		for file in files:
+			with open(file) as infile:
+				outfile.write(infile.read())
 	
 if __name__ == '__main__':
 	#generate_smaple_pos()
-	im = "test2.jpg"
+	#generate_all_lava_pup()
+	#collapse_list()
+	#sys.exit()
+	#im = "test2.jpg"
+	#im = os.path.join("positive", "Screenshot_20171223-182225.jpg")
+	#im = os.path.join("positive", "Screenshot_20171223-182324.jpg")
+	im = os.path.join("positive", "Screenshot_20171223-182326.jpg")
 	classifierpath = "data\\cascade.xml"
 	data = {}
 	
 	open_image(im, data)
 	gray = data["source"]
-	#gray = cv2.cvtColor(data["source"], cv2.COLOR_BGR2GRAY)
+	gray = cv2.cvtColor(data["source"], cv2.COLOR_BGR2GRAY)
 	clf = cv2.CascadeClassifier(classifierpath)
 	rects = clf.detectMultiScale(gray)
 	

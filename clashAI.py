@@ -846,6 +846,9 @@ def play_dumb_strat(data):
 	archer = get_card("archer", data)
 	minion_horde = get_card("minion_horde", data)
 	zap = get_card("zap", data)
+	
+	myprint("frame data : left_count {left}, right_count {right}, energy {energy}".format(left=data["frame_data"]["left_count"], right=data["frame_data"]["right_count"], energy=data["frame_data"]["current_energy"]), 3)
+	
 	has_more_unit_on_the_left = data["frame_data"]["left_count"] > data["frame_data"]["right_count"]
 	if zap is not None and data["frame_data"]["played_giant"] == True and data["frame_data"]["current_energy"] >= 2:
 		play_coord = data["frame_data"]["played_giant_coord"]
@@ -919,12 +922,12 @@ def play_dumb_strat(data):
 		play_card(fireball, left_bridge, data)
 		return
 		
-	if fireball is not None and data["frame_data"]["current_energy"] >= 8:
-		play_card(fireball, (14,-8), data)
-		return
-		
 	if archer is not None and data["frame_data"]["current_energy"] >= 8:
 		play_card(archer, (8,13), data)
+		return
+		
+	if fireball is not None and data["frame_data"]["current_energy"] >= 8:
+		play_card(fireball, (14,-8), data)
 		return
 		
 	if zap is not None and data["frame_data"]["current_energy"] >= 10:
@@ -1119,7 +1122,7 @@ def run_all(actions, data):
 		myprint("single search coord = " + str(coord),3)
 	
 	if "play" in actions:
-		max_game = 300
+		max_game = 150
 		num_game = 0
 		wait_card = 0
 		cur_time = datetime.datetime.now()
@@ -1279,7 +1282,7 @@ if __name__ == '__main__':
 				"deckstarcorner" : (520,600),
 				"arena_top_left" : (460,90),
 				"arena_bottom_right" : (843,566),
-				"close_app" : (312,16),
+				"close_app" : (320,16),
 				"start_app" : (108,180)
 			},
 			"screen_colors" : {
