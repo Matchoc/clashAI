@@ -171,10 +171,13 @@ def drawClusters(data):
 				maxY = coord[1]
 			
 		img2d = data["source"].reshape(data["size"][1], data["size"][0], len(data["source"][0]))
-		subimg = img2d[minY:maxY,minX:maxX,:]
-		
-		myprint("save minx {}, maxx {}, miny {}, maxy {}".format(minX, maxX, minY, maxY))
-		
+		#subimgOrig = img2d[minY:maxY,minX:maxX,:]
+		subimg = numpy.zeros(shape=(maxY-minY, maxX-minX, len(img2d[0][0])), dtype=numpy.uint8)
+		for index in cluster["clusterIndexes"]:
+			x, y = toXYCoord(index, data["size"][0])
+			color = data["source"][index]
+			subimg[y-minY-1][x-minX-1] = color
+				
 		if maxX - minX > 0 and maxY - minY > 0:
 			saveBitmap(subimg, os.path.join(data["outputdir"], "{:03}.png".format(counter)))
 		else:
@@ -257,12 +260,12 @@ if __name__ == '__main__':
 	
 	#run("sprites\\chr_golemite_lowres_tex.png")
 	
-	#sprites = glob.glob(os.path.join("sprites","*.png"))
-	#NUM_PROC = 4
-	#p = multiprocessing.Pool(NUM_PROC)
-	#r = p.map(run, sprites)
+	sprites = glob.glob(os.path.join("sprites","*.png"))
+	NUM_PROC = 16
+	p = multiprocessing.Pool(NUM_PROC)
+	r = p.map(run, sprites)
 	
-	generateTrainingDesc([r"G:\Perso\projects\clashAI\externals\vc12\bin\positive\images.png", r"G:\Perso\projects\clashAI\externals\vc12\bin\negative\images.png"])
+	#generateTrainingDesc([r"G:\Perso\projects\clashAI\externals\vc12\bin\positive\images.png", r"G:\Perso\projects\clashAI\externals\vc12\bin\negative\images.png"])
 	
 	
 	
