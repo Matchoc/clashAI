@@ -172,11 +172,11 @@ def drawClusters(data):
 			
 		img2d = data["source"].reshape(data["size"][1], data["size"][0], len(data["source"][0]))
 		#subimgOrig = img2d[minY:maxY,minX:maxX,:]
-		subimg = numpy.zeros(shape=(maxY-minY, maxX-minX, len(img2d[0][0])), dtype=numpy.uint8)
+		subimg = numpy.zeros(shape=(maxY-minY+1, maxX-minX+1, len(img2d[0][0])), dtype=numpy.uint8)
 		for index in cluster["clusterIndexes"]:
 			x, y = toXYCoord(index, data["size"][0])
 			color = data["source"][index]
-			subimg[y-minY-1][x-minX-1] = color
+			subimg[y-minY][x-minX] = color
 				
 		if maxX - minX > 0 and maxY - minY > 0:
 			saveBitmap(subimg, os.path.join(data["outputdir"], "{:03}.png".format(counter)))
@@ -258,7 +258,7 @@ if __name__ == '__main__':
 	
 	#drawClusters(data)
 	
-	#run("sprites\\chr_golemite_lowres_tex.png")
+	#run("sprites\\chr_giant_tex.png")
 	
 	sprites = glob.glob(os.path.join("sprites","*.png"))
 	NUM_PROC = 16

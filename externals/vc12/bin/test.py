@@ -96,9 +96,9 @@ def collapse_list():
 	
 if __name__ == '__main__':
 	#generate_smaple_pos()
-	#generate_all_lava_pup()
-	#collapse_list()
-	#sys.exit()
+	generate_all_lava_pup()
+	collapse_list()
+	sys.exit()
 	#im = "test2.jpg"
 	#im = os.path.join("positive", "Screenshot_20171223-182225.jpg")
 	#im = os.path.join("positive", "Screenshot_20171223-182324.jpg")
