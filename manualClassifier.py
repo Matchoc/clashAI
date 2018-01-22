@@ -17,7 +17,7 @@ import matplotlib.pyplot as plt
 import cv2
 from PIL import Image
 
-PRINT_LEVEL=2
+PRINT_LEVEL=4
 DATA_FOLDER = "data"
 def myprint(msg, level=0):
 	if (level >= PRINT_LEVEL):
@@ -50,12 +50,9 @@ def open_image(path):
 	#btnpixeldata = convert_RGB_to_BGR(btnpixeldata)
 	
 	tmpTemplate = numpy.array(btnpixeldata, dtype=numpy.uint8)
-	if hasAlpha:
-		tmpTemplateNoAlpha = tmpTemplate[:,0:3]
-		tmpTemplateAlpha = tmpTemplate[:,0:4]
+	tmpTemplate = tmpTemplate.reshape(height, width, len(tmpTemplate[0]))
 		
-		
-	return tmpTemplateAlpha, width, height
+	return tmpTemplate, width, height
 	
 def toPixIndex(coord, w):
 	a = ScopedTimer("toPixIndex", 0)
@@ -125,7 +122,7 @@ def searchAllCoordInScreenCV(pixelToFind, x, y, w, h, gwidth, gheight, hasAlpha,
 	return indices_centered
 	
 def open_image_2(path):
-	src = cv2.imread(path)
+	src = cv2.imread(path, cv2.IMREAD_UNCHANGED)
 	src_height, src_width = src.shape[:2]
 	#src_hasAlpha = src.mode == "RGBA"
 	
@@ -137,27 +134,59 @@ def run(data):
 	bestresult["max_val"] = 0
 	bestresult["min_val"] = 99999
 	
-	src, src_width, src_height = open_image_2(data["source"])
+	src, src_width, src_height = open_image(data["source"])
 	if src_width > src_height:
 		src = src[31:31+696,452:452+391]
 		
-	plt.imshow(cv2.cvtColor(src, cv2.COLOR_BGR2RGB))
+	src_no_alpha = src[:,:,0:3]
+		
+	plt.imshow(src)
 	plt.show()
 	
+	i = 0
+	
 	for sprite_path in data["test_sprites"]:
-		sprite_orig, sprite_orig_width, sprite_orig_height = open_image_2(sprite_path)
-		myprint("Testing sprite " + sprite_path,3)
+		sprite_orig, sprite_orig_width, sprite_orig_height = open_image(sprite_path)
+		
+		thisframe_res = None
+		thisframe_best = 0
+		
+		myprint("Testing sprite " + sprite_path,4)
 		for scale in range((int)(data["min_scale"]*precision), (int)(data["max_scale"]*precision), (int)(data["scale_step"]*precision)):
 			scale_float = (float)(scale) / (float)(precision)
 			myprint(scale_float)
-			sprite_scaled = cv2.resize(sprite_orig, ((int)(sprite_orig_width * scale_float), (int)(sprite_orig_height * scale_float)))
+			sprite_scaled = cv2.resize(sprite_orig, ((int)(sprite_orig_width * scale_float), (int)(sprite_orig_height * scale_float)), cv2.INTER_CUBIC)
+			sprite_scaled_no_alpha = sprite_scaled[:,:,0:3]
 			
-			res = cv2.matchTemplate(src,sprite_scaled,cv2.TM_SQDIFF_NORMED)
+			#plt.imshow(sprite_scaled)
+			#plt.show()
+			
+			mask = sprite_scaled[:,:,3]
+			ret, mask = cv2.threshold(mask, 10, 255, cv2.THRESH_BINARY)
+			mask = cv2.cvtColor(mask, cv2.COLOR_GRAY2RGB)
+			#plt.imshow(mask)
+			#plt.show()
+			
+			#res = cv2.matchTemplate(src_no_alpha,sprite_scaled_no_alpha,cv2.TM_SQDIFF_NORMED, mask=mask)
+			res = cv2.matchTemplate(src_no_alpha,sprite_scaled_no_alpha,cv2.TM_CCORR_NORMED, mask=mask)
 			
 			min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(res)
 			myprint("min_val : " + str(min_val) + ", max_val : " + str(max_val) + ", min_loc : " + str(min_loc) + ", max_loc : " + str(max_loc))
 			
-			if max_val < bestresult["min_val"]:
+			if thisframe_res == None or thisframe_best < max_val:
+				thisframe_res = {}
+				thisframe_res["max_val"] = max_val
+				thisframe_res["min_val"] = min_val
+				thisframe_res["indice"] = max_loc
+				thisframe_res["min_loc"] = min_loc
+				thisframe_res["scale"] = scale_float
+				thisframe_res["sprite_path"] = sprite_path
+				thisframe_res["sprite_w"] = (int)(sprite_orig_width * scale_float)
+				thisframe_res["sprite_h"] = (int)(sprite_orig_height * scale_float)
+				thisframe_res["res"] = res
+			
+			if max_val > bestresult["max_val"]:
+			#if min_val < bestresult["min_val"]:
 				bestresult["max_val"] = max_val
 				bestresult["min_val"] = min_val
 				bestresult["indice"] = max_loc
@@ -172,36 +201,41 @@ def run(data):
 			
 			myprint(indices)
 			
+		cv2.rectangle(src, (thisframe_res["indice"][0],thisframe_res["indice"][1]), (thisframe_res["indice"][0] + thisframe_res["sprite_w"], thisframe_res["indice"][1] + thisframe_res["sprite_h"]), i)
+		i += 1
+		#plt.imshow(cv2.cvtColor(src, cv2.COLOR_BGR2RGB))
+		#plt.show()
+			
 	myprint("BEST : " + str(bestresult),4)
 	src_result = src
 	
 	plt.imshow(bestresult["res"])
 	plt.show()
 	
-	#cv2.rectangle(src, (bestresult["indice"][0],bestresult["indice"][1]), (bestresult["indice"][0] + bestresult["sprite_w"], bestresult["indice"][1] + bestresult["sprite_h"]), 3)
-	#plt.imshow(cv2.cvtColor(src_result, cv2.COLOR_BGR2RGB))
-	#plt.show()
-	
-	cv2.rectangle(src, (bestresult["min_loc"][0],bestresult["min_loc"][1]), (bestresult["min_loc"][0] + bestresult["sprite_w"], bestresult["min_loc"][1] + bestresult["sprite_h"]), 3)
+	cv2.rectangle(src, (bestresult["indice"][0],bestresult["indice"][1]), (bestresult["indice"][0] + bestresult["sprite_w"], bestresult["indice"][1] + bestresult["sprite_h"]), 3)
 	plt.imshow(cv2.cvtColor(src_result, cv2.COLOR_BGR2RGB))
 	plt.show()
+	
+	#cv2.rectangle(src, (bestresult["min_loc"][0],bestresult["min_loc"][1]), (bestresult["min_loc"][0] + bestresult["sprite_w"], bestresult["min_loc"][1] + bestresult["sprite_h"]), 3)
+	#plt.imshow(src_result)
+	#plt.show()
 
 	
 if __name__ == '__main__':
 	data = {
 		"source" : os.path.join(DATA_FOLDER, "screenshots", "ss-20170524-220614.png"),
-		"test_sprites" : glob.glob( os.path.join("sprites", "chr_giant_tex", "*.png") ),
+		#"test_sprites" : glob.glob( os.path.join("sprites", "chr_giant_tex", "*.png") ),
 		#"test_sprites" : glob.glob( os.path.join("sprites", "chr_giant_tex", "227.png") ),
-		#"test_sprites" : glob.glob( os.path.join("sprites", "chr_archer_tex", "test-crop.png")),
-		"min_scale" : 0.5,
-		"max_scale" : 1.0,
+		"test_sprites" : glob.glob( os.path.join("sprites", "chr_archer_tex", "*.png")),
+		"min_scale" : 0.3,
+		"max_scale" : 0.6,
 		"scale_step" : 0.02,
 		"min_confidence" : 0.9
 	}
 	
 	run(data)
 	
-	#img, width, height = open_image_2(os.path.join("sprites", "chr_musketeer_tex", "141.png"))
+	#img, width, height = open_image(os.path.join("sprites", "chr_musketeer_tex", "141.png"))
 	#sprite_scaled = cv2.resize(img, ((int)(width * 0.5), (int)(height * 0.3)))
 	#plt.imshow(sprite_scaled)
 	#plt.show()

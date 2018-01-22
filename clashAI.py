@@ -1122,7 +1122,7 @@ def run_all(actions, data):
 		myprint("single search coord = " + str(coord),3)
 	
 	if "play" in actions:
-		max_game = 150
+		max_game = 300
 		num_game = 0
 		wait_card = 0
 		cur_time = datetime.datetime.now()
@@ -1208,6 +1208,7 @@ if __name__ == '__main__':
 			"play",
 			
 			#"takeScreenshot",
+			"takeActionScreenshot",
 			"none" # put this here so I don't have to add , when I change list size.
 		],
 		{
