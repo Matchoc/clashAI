@@ -133,6 +133,8 @@ def run(data):
 	bestresult = {}
 	bestresult["max_val"] = 0
 	bestresult["min_val"] = 99999
+	bestres = None
+	indices = []
 	
 	src, src_width, src_height = open_image(data["source"])
 	if src_width > src_height:
@@ -145,13 +147,16 @@ def run(data):
 	
 	i = 0
 	
+	flips = [None, 0, 1, -1]
+	rotations = [None, cv2.ROTATE_90_COUNTERCLOCKWISE, cv2.ROTATE_90_CLOCKWISE, cv2.ROTATE_180]
+		
 	for sprite_path in data["test_sprites"]:
 		sprite_orig, sprite_orig_width, sprite_orig_height = open_image(sprite_path)
 		
 		thisframe_res = None
 		thisframe_best = 0
 		
-		myprint("Testing sprite " + sprite_path,4)
+		a = ScopedTimer("Tested sprite " + sprite_path,4)
 		for scale in range((int)(data["min_scale"]*precision), (int)(data["max_scale"]*precision), (int)(data["scale_step"]*precision)):
 			scale_float = (float)(scale) / (float)(precision)
 			myprint(scale_float)
@@ -167,98 +172,53 @@ def run(data):
 			#plt.imshow(mask)
 			#plt.show()
 			
-			#res = cv2.matchTemplate(src_no_alpha,sprite_scaled_no_alpha,cv2.TM_SQDIFF_NORMED, mask=mask)
-			res = cv2.matchTemplate(src_no_alpha,sprite_scaled_no_alpha,cv2.TM_CCORR_NORMED, mask=mask)
-			
-			min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(res)
-			myprint("min_val : " + str(min_val) + ", max_val : " + str(max_val) + ", min_loc : " + str(min_loc) + ", max_loc : " + str(max_loc))
-			
-			isFlip = False
-			
-			sprite_scaled_ccw = cv2.flip(sprite_scaled_no_alpha,flipCode=1)
-			mask_ccw = cv2.flip(mask, flipCode=1)
-			#plt.imshow(sprite_scaled_ccw)
-			#plt.show()
-			res_ccw = cv2.matchTemplate(src_no_alpha,sprite_scaled_ccw,cv2.TM_CCORR_NORMED, mask=mask_ccw)
-			min_val_ccw, max_val_ccw, min_loc_ccw, max_loc_ccw = cv2.minMaxLoc(res_ccw)
-			if max_val_ccw > max_val:
-				isFlip = True
-				res = res_ccw
-				max_val = max_val_ccw
-				
-			'''
-				
-			sprite_scaled_ccw = cv2.rotate(sprite_scaled_no_alpha,cv2.ROTATE_90_COUNTERCLOCKWISE)
-			mask_ccw = cv2.rotate(mask, cv2.ROTATE_90_COUNTERCLOCKWISE)
-			res_ccw = cv2.matchTemplate(src_no_alpha,sprite_scaled_ccw,cv2.TM_CCORR_NORMED, mask=mask_ccw)
-			min_val_ccw, max_val_ccw, min_loc_ccw, max_loc_ccw = cv2.minMaxLoc(res_ccw)
-			if max_val_ccw > max_val:
-				res = res_ccw
-				max_val = max_val_ccw
-			
-			sprite_scaled_cw = cv2.rotate(sprite_scaled_no_alpha,cv2.ROTATE_90_CLOCKWISE)
-			mask_cw = cv2.rotate(mask, cv2.ROTATE_90_CLOCKWISE)
-			res_cw = cv2.matchTemplate(src_no_alpha,sprite_scaled_cw,cv2.TM_CCORR_NORMED, mask=mask_cw)
-			min_val_cw, max_val_cw, min_loc_cw, max_loc_cw = cv2.minMaxLoc(res_cw)
-			if max_val_cw > max_val:
-				res = res_cw
-				max_val = max_val_cw
-			
-			sprite_scaled_180 = cv2.rotate(sprite_scaled_no_alpha,cv2.ROTATE_180)
-			mask_180 = cv2.rotate(mask, cv2.ROTATE_180)
-			res_180 = cv2.matchTemplate(src_no_alpha,sprite_scaled_180,cv2.TM_CCORR_NORMED, mask=mask_180)
-			min_val_180, max_val_180, min_loc_180, max_loc_180 = cv2.minMaxLoc(res_180)
-			if max_val_180 > max_val:
-				res = res_180
-				max_val = max_val_180
-			'''			
-			
-			#min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(res)
-			
-			
-			
-			if thisframe_res == None or thisframe_best < max_val:
-				thisframe_res = {}
-				thisframe_res["max_val"] = max_val
-				thisframe_res["min_val"] = min_val
-				thisframe_res["indice"] = max_loc
-				thisframe_res["min_loc"] = min_loc
-				thisframe_res["scale"] = scale_float
-				thisframe_res["sprite_path"] = sprite_path
-				thisframe_res["sprite_w"] = (int)(sprite_orig_width * scale_float)
-				thisframe_res["sprite_h"] = (int)(sprite_orig_height * scale_float)
-				thisframe_res["isFlip"] = isFlip
-				thisframe_res["res"] = res
-			
-			if max_val > bestresult["max_val"]:
-			#if min_val < bestresult["min_val"]:
-				bestresult["max_val"] = max_val
-				bestresult["min_val"] = min_val
-				bestresult["indice"] = max_loc
-				bestresult["min_loc"] = min_loc
-				bestresult["scale"] = scale_float
-				bestresult["sprite_path"] = sprite_path
-				bestresult["sprite_w"] = (int)(sprite_orig_width * scale_float)
-				bestresult["sprite_h"] = (int)(sprite_orig_height * scale_float)
-				bestresult["isFlip"] = isFlip
-				bestresult["res"] = res
-			
-			indices = numpy.argwhere(res > data["min_confidence"])
-			
-			myprint(indices)
-			
+			for f in flips:
+				for r in rotations:
+					sprite_scaled_fr = sprite_scaled_no_alpha
+					mask_fr = mask
+					if r is not None:
+						sprite_scaled_fr = cv2.rotate(sprite_scaled_no_alpha, r)
+						mask_fr = cv2.rotate(mask, r)
+						
+					if f is not None:
+						sprite_scaled_fr = cv2.flip(sprite_scaled_fr,flipCode=f)
+						mask_fr = cv2.flip(mask_fr, flipCode=f)
+					
+					res_fr = cv2.matchTemplate(src_no_alpha, sprite_scaled_fr, cv2.TM_CCORR_NORMED, mask=mask_fr)
+					min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(res_fr)
+					
+					matching_indices = numpy.argwhere(res_fr > data["min_confidence"]).tolist()
+					for indice in matching_indices:
+						indices.append({"indice":indice, "scale":scale_float, "sprite_path":sprite_path, "w":(int)(sprite_orig_width * scale_float), "h":(int)(sprite_orig_height * scale_float), "rot":r, "flip":f})
+					
+					if max_val > bestresult["max_val"]:
+						bestresult["max_val"] = max_val
+						bestresult["min_val"] = min_val
+						bestresult["indice"] = max_loc
+						bestresult["min_loc"] = min_loc
+						bestresult["scale"] = scale_float
+						bestresult["sprite_path"] = sprite_path
+						bestresult["sprite_w"] = (int)(sprite_orig_width * scale_float)
+						bestresult["sprite_h"] = (int)(sprite_orig_height * scale_float)
+						bestresult["rotation"] = r
+						bestresult["flip"] = f
+						bestres = res_fr
+		
+		del a
 		#cv2.rectangle(src, (thisframe_res["indice"][0],thisframe_res["indice"][1]), (thisframe_res["indice"][0] + thisframe_res["sprite_w"], thisframe_res["indice"][1] + thisframe_res["sprite_h"]), i)
 		i += 1
 		#plt.imshow(cv2.cvtColor(src, cv2.COLOR_BGR2RGB))
 		#plt.show()
 			
 	myprint("BEST : " + str(bestresult),4)
+	myprint("indices : " + str(indices),5)
 	src_result = src
 	
-	plt.imshow(bestresult["res"])
+	plt.imshow(bestres)
 	plt.show()
 	
-	cv2.rectangle(src, (bestresult["indice"][0],bestresult["indice"][1]), (bestresult["indice"][0] + bestresult["sprite_w"], bestresult["indice"][1] + bestresult["sprite_h"]), 3)
+	for indice_data in indices:		
+		cv2.rectangle(src, (indice_data["indice"][1],indice_data["indice"][0]), (indice_data["indice"][1] + indice_data["w"], indice_data["indice"][0] + indice_data["h"]), 3)
 	plt.imshow(cv2.cvtColor(src_result, cv2.COLOR_BGR2RGB))
 	plt.show()
 	
@@ -268,16 +228,17 @@ def run(data):
 
 	
 if __name__ == '__main__':
+	
 	data = {
 		"source" : os.path.join(DATA_FOLDER, "screenshots", "ss-20170524-220614.png"),
 		#"test_sprites" : glob.glob( os.path.join("sprites", "chr_giant_tex", "*.png") ),
 		#"test_sprites" : glob.glob( os.path.join("sprites", "chr_giant_tex", "227.png") ),
-		"test_sprites" : glob.glob( os.path.join("sprites", "chr_archer_tex", "*.png")),
-		#"test_sprites" : glob.glob( os.path.join("sprites", "chr_archer_tex", "105.png")),
+		#"test_sprites" : glob.glob( os.path.join("sprites", "chr_archer_tex", "*.png")),
+		"test_sprites" : glob.glob( os.path.join("sprites", "chr_archer_tex", "105.png")),
 		"min_scale" : 0.2,
-		"max_scale" : 0.7,
+		"max_scale" : 0.3,
 		"scale_step" : 0.01,
-		"min_confidence" : 0.9
+		"min_confidence" : 0.96
 	}
 	
 	run(data)
