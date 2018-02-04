@@ -22,7 +22,8 @@ PRINT_LEVEL=4
 DATA_FOLDER = "data"
 def myprint(msg, level=0):
 	if (level >= PRINT_LEVEL):
-		sys.stdout.buffer.write((str(msg) + "\n").encode('UTF-8'))
+		#sys.stdout.write((str(msg) + "\n").encode('UTF-8'))
+		print((str(msg) + "\n").encode('UTF-8'))
 		
 class ScopedTimer:
 	totals = {}
@@ -91,7 +92,7 @@ class TicTacToe:
 		else:
 			return False
 		
-	def is_valid_move(x,y):
+	def is_valid_move(self, x,y):
 		return self.board[x][y] == 0
 		
 	def get_valid_moves_list(self):
@@ -196,10 +197,55 @@ def play_a_game(Q, size):
 	
 	return winner_moves, loser_moves, is_null
 	
+def play_interactive(Q, final_game):
+	won = None
+	symbols = [X, O]
+	players = ['Player', 'AI']
+	#players = ['AI', 'Player']
+	myprint(str(final_game), 10)
+	while not won:
+		p = players[0]
+		s = symbols[0]
+		if p == 'Player':
+			move = None
+			while move is None:
+				try:
+					move = input('Your turn (0-8): ')  # Python 3
+					x = move % final_game.size
+					y = move / final_game.size
+					
+					print('playing ' + str((x, y)))
+					if final_game.is_valid_move(x, y):
+						if s == X:
+							won = final_game.play_x(x, y)
+						else:
+							won = final_game.play_o(x, y)
+					else:
+						print('Invalid move ' + str(move))
+						move = None
+				except Exception as e:
+					print(e)
+					print('Invalid move ' + str(move))
+					print(final_game.board)
+					move = None
+		else:
+			ai_move, won = play_a_move(Q, final_game, s)
+		
+		myprint(str(final_game), 10)
+
+		if won:
+			print str(p) + ' won the game !'
+
+		del players[0]
+		players += [p]
+		del symbols[0]
+		symbols += [s]
+	
+	
 if __name__ == '__main__':
 	Q = {}
 	board_size = 3
-	for i in range(10000):
+	for i in range(1000):
 		winner_moves, loser_moves, is_null = play_a_game(Q, board_size)
 		if is_null:
 			back_propagate(Q, -10.0, winner_moves)
@@ -209,14 +255,15 @@ if __name__ == '__main__':
 			back_propagate(Q, -100.0, loser_moves)
 	
 	final_game = TicTacToe(board_size)
-	final_game.play_x(0,0)
-	ai_move, won = play_a_move(Q, final_game, O)
-	final_game.play_x(2,2)
-	ai_move, won = play_a_move(Q, final_game, O)
-	final_game.play_x(0,1)
-	ai_move, won = play_a_move(Q, final_game, O)
+	play_interactive(Q, final_game)
+	#final_game.play_x(0,0)
+	#ai_move, won = play_a_move(Q, final_game, O)
+	#final_game.play_x(2,2)
+	#ai_move, won = play_a_move(Q, final_game, O)
+	#final_game.play_x(0,1)
+	#ai_move, won = play_a_move(Q, final_game, O)
 	
-	myprint(str(final_game), 10)
+	#myprint(str(final_game), 10)
 	
 	
 	
