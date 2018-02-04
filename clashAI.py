@@ -348,6 +348,14 @@ def calculatePerimeter(cluster, startCoord, board_size, verbose):
 				break
 	return perimeter
 	
+def get_middle_x_coord(data):
+	arena_right = data["button_abs_coords"]["arena_bottom_right"][0]
+	arena_bottom = data["button_abs_coords"]["arena_bottom_right"][1]
+	arena_offset_x = data["button_abs_coords"]["arena_top_left"][0]
+	arena_offset_y = data["button_abs_coords"]["arena_top_left"][1]
+	
+	return arena_offset_x + ((arena_right - arena_offset_x) / 2.0)
+	
 def count_pixel_per_side(data):
 	a = ScopedTimer("count_pixel_per_side", 1)
 	diff_img = numpy.array(data["frame_data"]["arena_diff"], dtype=numpy.uint8)
@@ -525,13 +533,11 @@ def searchAllCoordInScreenCV(pixelToFind, x, y, w, h, gwidth, gheight, hasAlpha,
 	#plt.imshow(res)
 	#plt.show()
 	indices = numpy.argwhere(res > min_confidence)
-	myprint("indices = " + str(indices),3)
 	indices_centered = [ [
 		int(m[1] + x + (w / 2)) + gScreenOffsetL, 
 		int(m[0] + y + (h / 2)) + gScreenOffsetT]
 		for m in indices]
 			
-	myprint("indices_centered" + str(indices_centered),3)
 	return indices_centered
 	#### ITERATE THROUGH ALL VALUES > CONFIDENCE !!!!
 	
@@ -546,6 +552,7 @@ def searchAllCoordInScreenCV(pixelToFind, x, y, w, h, gwidth, gheight, hasAlpha,
 	#	return None
 	
 	#max_loc = list(max_loc)
+	
 	#max_loc[0] = int(max_loc[0] + x + (w / 2)) + gScreenOffsetL
 	#max_loc[1] = int(max_loc[1] + y + (h / 2)) + gScreenOffsetT
 	
@@ -642,16 +649,16 @@ def search_all_image(path, x=0, y=0, w=-1, h=-1):
 	width, height = im.size
 	btnpixeldata = list(im.getdata())
 	hasAlpha = im.mode == "RGBA"
+	myprint("hasAlpha : " + str(hasAlpha))
 	btnpixeldata = convert_RGB_to_BGR(btnpixeldata)
 	myprint("search all " + path)
 	myprint("x,y = " + str(x) + "," + str(y) + "w,h = " + str(w) + "," + str(h))
-	confidence = 0.85
+	confidence = 0.86
 	coord = searchAllCoordInScreenCV(btnpixeldata, x, y, width, height, w, h, hasAlpha, confidence)
 	for c in coord:
 		c[0] -= int(width/2)
 		c[1] -= int(height/2)
 		
-	myprint("coord = " + str(coord),3)
 	return coord
 	
 def calculate_offset_from_appname_ref(data):
@@ -817,8 +824,32 @@ def play_card(cardid, board_coord, data):
 	if "frame_data" in data:
 		data["frame_data"]["hand"][cardid] = ""
 		data["frame_data"]["needHandUpdate"] = True
+		
+def find_all_ennemy_level(data):
+	if "ennemy_count" not in data["frame_data"]:
+		data["frame_data"]["ennemy_count"] = {}
+	all_count = 0
+	left_count = 0
+	right_count = 0
+	middle_coord = get_middle_x_coord(data)
+	myprint("middle_coord = " + str(middle_coord))
 	
-def play_dumb_strat(data):
+	for level in range(1,10):
+		myprint("Looking for level : " + str(level))
+		coords = search_all_image(data["ref_img"]["red_level"][level])
+		for coord in coords:
+			if coord[0] >= middle_coord:
+				right_count += 1
+			else:
+				left_count += 1
+		all_count += len(coords)
+		data["frame_data"]["ennemy_count"][level] = coords
+		
+	data["frame_data"]["ennemy_count"]["all"] = all_count
+	data["frame_data"]["right_count"] = right_count
+	data["frame_data"]["left_count"] = left_count
+	
+def play_dumb_strat(data, handle=None):
 	a = ScopedTimer("play_dumb_strat")
 	right_bridge = (14, 0)
 	left_bridge = (3,0)
@@ -836,10 +867,11 @@ def play_dumb_strat(data):
 		
 	myprint("current hand : " + str(data["frame_data"]["hand"]),3)
 		
-	calculate_arena_diff(data)
-	count_pixel_per_side(data)
+	#calculate_arena_diff(data)
+	#count_pixel_per_side(data)
 	# collectClusters(data) # too costy
 	calculate_current_energy(data)
+	find_all_ennemy_level(data)
 	
 	giant = get_card("giant", data)
 	balloon = get_card("balloon", data)
@@ -847,8 +879,12 @@ def play_dumb_strat(data):
 	minion_horde = get_card("minion_horde", data)
 	zap = get_card("zap", data)
 	
-	myprint("frame data : left_count {left}, right_count {right}, energy {energy}".format(left=data["frame_data"]["left_count"], right=data["frame_data"]["right_count"], energy=data["frame_data"]["current_energy"]), 3)
+	myprint("frame data : energy {energy}, left_count {left}, right_count {right}, ennemies {ennemies}".format(energy=data["frame_data"]["current_energy"], left=data["frame_data"]["left_count"], right=data["frame_data"]["right_count"], ennemies=str(data["frame_data"]["ennemy_count"])), 3)
 	
+	if handle is not None and abs(data["frame_data"]["screenshot_time"] - data["frame_data"]["inactive_timer"]) > 4 and data["frame_data"]["ennemy_count"]["all"] >= 4:
+		data["frame_data"]["screenshot_time"] = data["frame_data"]["inactive_timer"]
+		takeScreenshot(handle, "fivethousand")
+
 	has_more_unit_on_the_left = data["frame_data"]["left_count"] > data["frame_data"]["right_count"]
 	if zap is not None and data["frame_data"]["played_giant"] == True and data["frame_data"]["current_energy"] >= 2:
 		play_coord = data["frame_data"]["played_giant_coord"]
@@ -898,27 +934,27 @@ def play_dumb_strat(data):
 	minion = get_card("minion", data)
 	skelarmy = get_card("skelarmy", data)
 	
-	if skelarmy is not None and data["frame_data"]["left_count"] > 4000 and data["frame_data"]["current_energy"] >= 3:
+	if skelarmy is not None and data["frame_data"]["left_count"] > 2 and data["frame_data"]["current_energy"] >= 3:
 		play_card(skelarmy, (3,5), data)
 		return
 		
-	if skelarmy is not None and data["frame_data"]["right_count"] > 4000 and data["frame_data"]["current_energy"] >= 3:
+	if skelarmy is not None and data["frame_data"]["right_count"] > 2 and data["frame_data"]["current_energy"] >= 3:
 		play_card(skelarmy, (14,5), data)
 		return
 	
-	if minion_horde is not None and data["frame_data"]["left_count"] > 5500 and data["frame_data"]["current_energy"] >= 7:
+	if minion_horde is not None and data["frame_data"]["left_count"] > 3 and data["frame_data"]["current_energy"] >= 7:
 		play_card(minion_horde, (3,5), data)
 		return
 		
-	if minion_horde is not None and data["frame_data"]["right_count"] > 5500 and data["frame_data"]["current_energy"] >= 7:
+	if minion_horde is not None and data["frame_data"]["right_count"] > 3 and data["frame_data"]["current_energy"] >= 7:
 		play_card(minion_horde, (14,5), data)
 		return
 		
-	if fireball is not None and data["frame_data"]["right_count"] > 6000 and data["frame_data"]["current_energy"] >= 5:
+	if fireball is not None and data["frame_data"]["right_count"] > 4 and data["frame_data"]["current_energy"] >= 5:
 		play_card(fireball, right_bridge, data)
 		return
 		
-	if fireball is not None and data["frame_data"]["left_count"] > 6000 and data["frame_data"]["current_energy"] >= 5:
+	if fireball is not None and data["frame_data"]["left_count"] > 4 and data["frame_data"]["current_energy"] >= 5:
 		play_card(fireball, left_bridge, data)
 		return
 		
@@ -1117,9 +1153,9 @@ def run_all(actions, data):
 		
 	if "test_find_all" in actions:
 		updateScreen(handle[0])
-		search_all_image(data["ref_img"]["red_level"][9])
-		coord = search_image(data["ref_img"]["red_level"][9])
-		myprint("single search coord = " + str(coord),3)
+		data["frame_data"] = {}
+		find_all_ennemy_level(data)
+		myprint("found all ennemies left/right/all ({left}, {right}, {all}) : {detail}".format(detail=str(data["frame_data"]["ennemy_count"]), left=data["frame_data"]["left_count"], right=data["frame_data"]["right_count"], all=data["frame_data"]["ennemy_count"]["all"]),5)
 	
 	if "play" in actions:
 		max_game = 300
@@ -1128,6 +1164,11 @@ def run_all(actions, data):
 		cur_time = datetime.datetime.now()
 		prev_time = cur_time
 		data["frame_data"]["inactive_timer"] = 0
+		data["frame_data"]["screenshot_time"] = 0
+		
+		h = None
+		if "takeActionScreenshot" in actions:
+			h = handle[0]
 		while num_game < max_game:
 			updateScreen(handle[0], False) # the first init/update screen will have set the window in the foreground. Saves 0.2ms every time we do a screenshot.
 			cur_screen = get_current_screen_name(data)
@@ -1147,7 +1188,7 @@ def run_all(actions, data):
 				}
 				sleep(3)
 			elif cur_screen == "victoryscreen":
-				if "takeScreenshot" in actions:
+				if "takeVictoryScreenshot" in actions:
 					updateScreen(handle[0])
 					takeScreenshot(handle[0], "matches")
 				num_game += 1
@@ -1155,7 +1196,7 @@ def run_all(actions, data):
 				click(*data["button_abs_coords"]["finish"])
 				sleep(3)
 			elif cur_screen == "battlescreen":
-				play_dumb_strat(data)
+				play_dumb_strat(data, h)
 				# if we've been in the battlescreen for more than 15 min there's a serious problem
 				if data["frame_data"]["inactive_timer"] > 15 * 60:
 					myprint("Error ! App Stuck for {}, attempting reset".format(data["frame_data"]["inactive_timer"]),5)
@@ -1195,11 +1236,11 @@ if __name__ == '__main__':
 			"update_screen",
 			#"pretend",
 			"init",
-			#"test_find_all",
 			#"wait_after_init",
 			#"test_screen_diff",
 			#"test_cards",
 			#"find_screen",
+			#"test_find_all",
 			#"test_play_area",
 			#"test_battle_button",
 			#"test_energy",
@@ -1207,7 +1248,7 @@ if __name__ == '__main__':
 			
 			"play",
 			
-			#"takeScreenshot",
+			#"takeVictoryScreenshot",
 			"takeActionScreenshot",
 			"none" # put this here so I don't have to add , when I change list size.
 		],
