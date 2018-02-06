@@ -628,11 +628,21 @@ def board_coord_to_mousepos(data, a, b):
 	return int(pos_x), int(pos_y)
 	
 def search_image(path, x=0, y=0, w=-1, h=-1):
-	im = Image.open(path)
-	width, height = im.size
-	btnpixeldata = list(im.getdata())
-	hasAlpha = im.mode == "RGBA"
-	btnpixeldata = convert_RGB_to_BGR(btnpixeldata)
+	global IMG_CACHE
+	if path not in IMG_CACHE:
+		im = Image.open(path)
+		width, height = im.size
+		btnpixeldata = list(im.getdata())
+		hasAlpha = im.mode == "RGBA"
+		myprint("hasAlpha : " + str(hasAlpha))
+		btnpixeldata = convert_RGB_to_BGR(btnpixeldata)
+		IMG_CACHE[path] = {"width":width, "height":height, "btnpixeldata":btnpixeldata, "hasAlpha":hasAlpha}
+	else:
+		width = IMG_CACHE[path]["width"]
+		height = IMG_CACHE[path]["height"]
+		btnpixeldata = IMG_CACHE[path]["btnpixeldata"]
+		hasAlpha = IMG_CACHE[path]["hasAlpha"]
+		
 	myprint("search_image " + path)
 	myprint("x,y = " + str(x) + "," + str(y) + "w,h = " + str(w) + "," + str(h))
 	confidence = 0.85
@@ -643,14 +653,26 @@ def search_image(path, x=0, y=0, w=-1, h=-1):
 		coord[0] -= int(width/2)
 		coord[1] -= int(height/2)
 	return coord
-	
+
+IMG_CACHE = {}
 def search_all_image(path, x=0, y=0, w=-1, h=-1):
-	im = Image.open(path)
-	width, height = im.size
-	btnpixeldata = list(im.getdata())
-	hasAlpha = im.mode == "RGBA"
-	myprint("hasAlpha : " + str(hasAlpha))
-	btnpixeldata = convert_RGB_to_BGR(btnpixeldata)
+	global IMG_CACHE
+	if path not in IMG_CACHE:
+		im = Image.open(path)
+		width, height = im.size
+		btnpixeldata = list(im.getdata())
+		hasAlpha = im.mode == "RGBA"
+		myprint("hasAlpha : " + str(hasAlpha))
+		btnpixeldata = convert_RGB_to_BGR(btnpixeldata)
+		IMG_CACHE[path] = {"width":width, "height":height, "btnpixeldata":btnpixeldata, "hasAlpha":hasAlpha}
+		myprint("Caching " + path,2)
+	else:
+		width = IMG_CACHE[path]["width"]
+		height = IMG_CACHE[path]["height"]
+		btnpixeldata = IMG_CACHE[path]["btnpixeldata"]
+		hasAlpha = IMG_CACHE[path]["hasAlpha"]
+		myprint("Using cached version of " + path, 2)
+		
 	myprint("search all " + path)
 	myprint("x,y = " + str(x) + "," + str(y) + "w,h = " + str(w) + "," + str(h))
 	confidence = 0.86
@@ -824,8 +846,9 @@ def play_card(cardid, board_coord, data):
 	if "frame_data" in data:
 		data["frame_data"]["hand"][cardid] = ""
 		data["frame_data"]["needHandUpdate"] = True
-		
+
 def find_all_ennemy_level(data):
+	a = ScopedTimer("find_all_ennemy_level")
 	if "ennemy_count" not in data["frame_data"]:
 		data["frame_data"]["ennemy_count"] = {}
 	all_count = 0
@@ -834,9 +857,16 @@ def find_all_ennemy_level(data):
 	middle_coord = get_middle_x_coord(data)
 	myprint("middle_coord = " + str(middle_coord))
 	
+	#"arena_top_left" : (460,90),
+	#"arena_bottom_right" : (843,566),
+	startsearch = data["button_correct_coords"]["arena_top_left"]
+	endsearch = data["button_correct_coords"]["arena_bottom_right"]
+	width = endsearch[0] - startsearch[0]
+	height = endsearch[1] - startsearch[1]
+	
 	for level in range(1,10):
 		myprint("Looking for level : " + str(level))
-		coords = search_all_image(data["ref_img"]["red_level"][level])
+		coords = search_all_image(data["ref_img"]["red_level"][level], startsearch[0], startsearch[1], width, height)
 		for coord in coords:
 			if coord[0] >= middle_coord:
 				right_count += 1
@@ -1249,7 +1279,7 @@ if __name__ == '__main__':
 			"play",
 			
 			#"takeVictoryScreenshot",
-			"takeActionScreenshot",
+			#"takeActionScreenshot",
 			"none" # put this here so I don't have to add , when I change list size.
 		],
 		{
