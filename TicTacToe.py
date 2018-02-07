@@ -19,7 +19,7 @@ import cv2
 from PIL import Image
 from sklearn.neural_network import MLPClassifier, MLPRegressor
 
-PRINT_LEVEL=0
+PRINT_LEVEL=5
 DATA_FOLDER = "data"
 def myprint(msg, level=0):
 	if (level >= PRINT_LEVEL):
@@ -159,9 +159,20 @@ def find_best_action(Q_row):
 	return random.choice(ideal_moves)
 	
 def play_a_move(Q, cur_state, turn):
-	if repr(cur_state) not in Q:
-		init_cost_action(Q, cur_state, cur_state.get_valid_moves_list())
-	action = find_best_action(Q[repr(cur_state)])
+	if type(Q) is MLPRegressor:
+		possible_actions = Q.predict([cur_state.X()])
+		possible_actions = [(x, possible_actions[0][x]) for x in range(len(possible_actions[0]))]
+		possible_actions = sorted(possible_actions, key=lambda x: x[1], reverse=True)
+		#index = numpy.argmax(possible_actions)
+		for val in possible_actions:
+			action = (int(val[0]) % cur_state.size, int(val[0]) / cur_state.size)
+			if cur_state.is_valid_move(*action):
+				break
+	else:
+		if repr(cur_state) not in Q:
+			init_cost_action(Q, cur_state, cur_state.get_valid_moves_list())
+		action = find_best_action(Q[repr(cur_state)])
+		
 	return action, cur_state.play(turn, *action)
 	
 def play_a_game(Q, size):
@@ -174,13 +185,11 @@ def play_a_game(Q, size):
 		
 		if type(Q) is MLPRegressor:
 			possible_actions = Q.predict([cur_state.X()])
-			possible_actions = [(x, possible_actions[x]) for x in range(len(possible_actions))]
-			myprint(str(possible_actions),5)
+			possible_actions = [(x, possible_actions[0][x]) for x in range(len(possible_actions[0]))]
 			possible_actions = sorted(possible_actions, key=lambda x: x[1], reverse=True)
-			myprint(str(possible_actions),5)
 			#index = numpy.argmax(possible_actions)
 			for val in possible_actions:
-				action = (int(val[0]) % cur_state.size, int(val[0]) / cur_state.size)
+				action = (int(val[0]) % cur_state.size, int(val[0] / cur_state.size))
 				if cur_state.is_valid_move(*action):
 					break
 			
@@ -233,7 +242,7 @@ def play_interactive(Q, final_game):
 				try:
 					move = input('Your turn (0-8): ')  # Python 3
 					x = int(move) % final_game.size
-					y = int(move) / final_game.size
+					y = int(int(move) / final_game.size)
 					
 					print('playing ' + str((x, y)))
 					if final_game.is_valid_move(x, y):
@@ -280,19 +289,71 @@ def train_using_Q_table(board_size):
 	final_game = TicTacToe(board_size)
 	play_interactive(Q, final_game)
 	
+def run_MLP_game(machine, board_size):
+	winner_moves, loser_moves, is_null = play_a_game(machine, board_size)
+
+	X = []
+	new_y = []
+	next_state = None
+	next_action = None
+	for state, action in reversed(winner_moves):
+		X.append(state.X())
+		played_action = action
+		index = played_action[0] + played_action[1] * board_size
+		myprint("played_action {} -> index {}".format(played_action, index), 3)
+		
+		if next_state is None:
+			max_Q = -10.0 if is_null else 100.0
+		else:
+			estimated_ynext = machine.predict([next_state.X()])
+			max_Q = max(estimated_ynext[0])
+			
+		estimated_y = machine.predict([state.X()])
+		estimated_y[0][index] = estimated_y[0][index] + (Discount_factor * max_Q)
+		new_y.append(estimated_y[0])
+		next_state = state
+		next_action = action
+		
+	next_state = None
+	next_action = None
+	for state, action in reversed(loser_moves):
+		X.append(state.X())
+		played_action = action
+		index = played_action[0] + played_action[1] * board_size
+		
+		if next_state is None:
+			max_Q = -10.0 if is_null else -100.0
+		else:
+			estimated_ynext = machine.predict([next_state.X()])
+			max_Q = max(estimated_ynext[0])
+			
+		estimated_y = machine.predict([state.X()])
+		estimated_y[0][index] = estimated_y[0][index] + (Discount_factor * max_Q)
+		new_y.append(estimated_y[0])
+		next_state = state
+		next_action = action	
+		
+	machine.partial_fit(X, new_y)
+	
 def train_using_MLP(board_size):
 	X = [[0,0,0,0,0,0,0,0,0]]
 	y = [[100,0,0,0,0,0,0,0,0]]
 	MACHINE_ALL = MLPRegressor(solver='sgd', alpha=10.0, hidden_layer_sizes=(150, 29), random_state=1000, activation="relu", max_iter=4000, batch_size=1)
 	MACHINE_ALL.partial_fit(X, y)
 	
-	winner_moves, loser_moves, is_null = play_a_game(MACHINE_ALL, board_size)
-	
+	for i in range(10000):
+		run_MLP_game(MACHINE_ALL, board_size)
+
+	final_game = TicTacToe(board_size)
+	play_interactive(MACHINE_ALL, final_game)
 	
 if __name__ == '__main__':
 	board_size = 3
 	
 	train_using_MLP(board_size)
+	
+	#a = [1,2,3,445,3243,5]
+	#print(max(a))
 	
 	#train_using_Q_table(board_size)
 	
