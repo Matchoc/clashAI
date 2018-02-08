@@ -2,6 +2,7 @@ import sys
 import os
 os.environ["path"] = os.path.dirname(sys.executable) + ";" + os.environ["path"]
 import glob
+import copy
 import win32gui
 import win32ui
 import win32con
@@ -19,7 +20,7 @@ import cv2
 from PIL import Image
 from sklearn.neural_network import MLPClassifier, MLPRegressor
 
-PRINT_LEVEL=5
+PRINT_LEVEL=3
 DATA_FOLDER = "data"
 def myprint(msg, level=0):
 	if (level >= PRINT_LEVEL):
@@ -158,6 +159,14 @@ def find_best_action(Q_row):
 			
 	return random.choice(ideal_moves)
 	
+def to_index(x, y, board_size):
+	return y + x * board_size
+	
+def to_xy(move, board_size):
+	y = int(move) % board_size
+	x = int(int(move) / board_size)
+	return x,y
+	
 def play_a_move(Q, cur_state, turn):
 	if type(Q) is MLPRegressor:
 		possible_actions = Q.predict([cur_state.X()])
@@ -165,7 +174,7 @@ def play_a_move(Q, cur_state, turn):
 		possible_actions = sorted(possible_actions, key=lambda x: x[1], reverse=True)
 		#index = numpy.argmax(possible_actions)
 		for val in possible_actions:
-			action = (int(val[0]) % cur_state.size, int(val[0]) / cur_state.size)
+			action = to_xy(val[0], cur_state.size)
 			if cur_state.is_valid_move(*action):
 				break
 	else:
@@ -187,9 +196,10 @@ def play_a_game(Q, size):
 			possible_actions = Q.predict([cur_state.X()])
 			possible_actions = [(x, possible_actions[0][x]) for x in range(len(possible_actions[0]))]
 			possible_actions = sorted(possible_actions, key=lambda x: x[1], reverse=True)
+			myprint("Possible Actions (" + repr(cur_state) + ") : " + str(possible_actions))
 			#index = numpy.argmax(possible_actions)
 			for val in possible_actions:
-				action = (int(val[0]) % cur_state.size, int(val[0] / cur_state.size))
+				action = to_xy(val[0], cur_state.size)
 				if cur_state.is_valid_move(*action):
 					break
 			
@@ -199,11 +209,13 @@ def play_a_game(Q, size):
 			action = find_best_action(Q[repr(cur_state)])
 		
 		if move % 2 == 0:
-			x_moves.append([cur_state, action])
+			x_moves.append([copy.deepcopy(cur_state), action])
 			winner = cur_state.play_x(*action)
 		else:
-			o_moves.append([cur_state, action])
+			o_moves.append([copy.deepcopy(cur_state), action])
 			winner = cur_state.play_o(*action)
+		
+		myprint(str(cur_state))
 		
 		if not winner:
 			move += 1
@@ -241,8 +253,7 @@ def play_interactive(Q, final_game):
 			while move is None:
 				try:
 					move = input('Your turn (0-8): ')  # Python 3
-					x = int(move) % final_game.size
-					y = int(int(move) / final_game.size)
+					x, y = to_xy(move, final_game.size)
 					
 					print('playing ' + str((x, y)))
 					if final_game.is_valid_move(x, y):
@@ -299,8 +310,7 @@ def run_MLP_game(machine, board_size):
 	for state, action in reversed(winner_moves):
 		X.append(state.X())
 		played_action = action
-		index = played_action[0] + played_action[1] * board_size
-		myprint("played_action {} -> index {}".format(played_action, index), 3)
+		index = to_index(*played_action, board_size)
 		
 		if next_state is None:
 			max_Q = -10.0 if is_null else 100.0
@@ -319,7 +329,7 @@ def run_MLP_game(machine, board_size):
 	for state, action in reversed(loser_moves):
 		X.append(state.X())
 		played_action = action
-		index = played_action[0] + played_action[1] * board_size
+		index = to_index(*played_action, board_size)
 		
 		if next_state is None:
 			max_Q = -10.0 if is_null else -100.0
@@ -331,17 +341,22 @@ def run_MLP_game(machine, board_size):
 		estimated_y[0][index] = estimated_y[0][index] + (Discount_factor * max_Q)
 		new_y.append(estimated_y[0])
 		next_state = state
-		next_action = action	
+		next_action = action
 		
+	myprint("partial_fit X : " + str(X))
+	myprint("partial_fit y : " + str(new_y))
 	machine.partial_fit(X, new_y)
 	
 def train_using_MLP(board_size):
 	X = [[0,0,0,0,0,0,0,0,0]]
-	y = [[100,0,0,0,0,0,0,0,0]]
-	MACHINE_ALL = MLPRegressor(solver='sgd', alpha=10.0, hidden_layer_sizes=(150, 29), random_state=1000, activation="relu", max_iter=4000, batch_size=1)
+	y = [[0,0,0,0,0,0,0,0,0]]
+	MACHINE_ALL = MLPRegressor(solver='sgd', alpha=1.0, hidden_layer_sizes=(150, 29), random_state=1000, activation="relu", max_iter=4000, batch_size=5)
 	MACHINE_ALL.partial_fit(X, y)
 	
-	for i in range(10000):
+	max_game = 50000
+	for i in range(max_game):
+		if i % 10 == 0:
+			myprint("Game {} of {}".format(i, max_game),3)
 		run_MLP_game(MACHINE_ALL, board_size)
 
 	final_game = TicTacToe(board_size)
