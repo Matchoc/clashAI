@@ -13,6 +13,7 @@ import operator
 import random
 import numpy
 import json
+import pickle
 import scipy.ndimage
 import multiprocessing
 import matplotlib.pyplot as plt
@@ -21,7 +22,7 @@ from PIL import Image
 from sklearn.externals import joblib
 from sklearn.neural_network import MLPClassifier, MLPRegressor
 
-PRINT_LEVEL=3
+PRINT_LEVEL=0
 DATA_FOLDER = "data"
 def myprint(msg, level=0):
 	if (level >= PRINT_LEVEL):
@@ -50,9 +51,15 @@ EMPTY = 0
 X = 1
 O = 2
 class TicTacToe:
-	def __init__(self, size=3):
+	def __init__(self, size=3, fromstr=None):
 		self.size = size
 		self.board = numpy.zeros(size * size, numpy.int8)
+		if fromstr is not None:
+			index = 0
+			for move in list(fromstr):
+				key = int(move)
+				self.board[index] = key
+				index += 1
 		self.board = self.board.reshape(size,size)
 		
 	def __str__(self):
@@ -138,6 +145,9 @@ def get_max(Q_row):
 	
 Discount_factor = 0.9
 Learning_rate = 0.5
+Epsilon = 1.0
+EpsilonStep = 0.1
+EpsilonParts = 11
 def back_propagate(Q, leaf_reward, moves):
 	prev = None
 	for obj_state, action in reversed(moves):
@@ -186,7 +196,7 @@ def play_a_move(Q, cur_state, turn):
 		
 	return action, cur_state.play(turn, *action)
 	
-def play_a_game(Q, size):
+def play_a_game(Q, size, epsilon=0.0):
 	cur_state = TicTacToe(size)
 	x_moves = []
 	o_moves = []
@@ -195,6 +205,7 @@ def play_a_game(Q, size):
 	while winner == False and move < size * size:
 		
 		if type(Q) is MLPRegressor:
+			rnd = random.random()
 			possible_actions = Q.predict([cur_state.X()])
 			possible_actions = [(x, possible_actions[0][x]) for x in range(len(possible_actions[0]))]
 			possible_actions = sorted(possible_actions, key=lambda x: x[1], reverse=True)
@@ -202,6 +213,9 @@ def play_a_game(Q, size):
 			#index = numpy.argmax(possible_actions)
 			for val in possible_actions:
 				action = to_xy(val[0], cur_state.size)
+				if rnd < epsilon:
+					action = to_xy(random.choice(possible_actions)[0], cur_state.size)
+					myprint("Choosing Randomly {} / {}".format(rnd, epsilon),2)
 				if cur_state.is_valid_move(*action):
 					break
 			
@@ -299,6 +313,8 @@ def train_using_Q_table(board_size):
 			back_propagate(Q, 100.0, winner_moves)
 			back_propagate(Q, -100.0, loser_moves)
 	
+	save_Q_table(Q)
+	
 	final_game = TicTacToe(board_size)
 	play_interactive(Q, final_game)
 	
@@ -307,26 +323,28 @@ def MLP_training(machine, moves, board_size, reward):
 	new_y = []
 	next_state = None
 	next_action = None
+	next_adjusted_y = None
 	for state, action in reversed(moves):
 		X.append(state.X())
 		index = to_index(*action, board_size)
 		
 		if next_state is None:
-			max_Q = reward
+			max_Q = reward / Discount_factor
 		else:
-			estimated_ynext = machine.predict([next_state.X()])
-			max_Q = max(estimated_ynext[0])
+			#estimated_ynext = machine.predict([next_state.X()])
+			max_Q = max(next_adjusted_y)
 			
 		estimated_y = machine.predict([state.X()])
 		estimated_y[0][index] = estimated_y[0][index] + (Discount_factor * max_Q)
 		new_y.append(estimated_y[0])
 		next_state = state
 		next_action = action
+		next_adjusted_y = estimated_y[0]
 	
 	return X, new_y
 	
-def run_MLP_game(machine, board_size):
-	winner_moves, loser_moves, is_null = play_a_game(machine, board_size)
+def run_MLP_game(machine, board_size, epsilon):
+	winner_moves, loser_moves, is_null = play_a_game(machine, board_size, epsilon)
 
 	X, new_y = MLP_training(machine, winner_moves, board_size, -10.0 if is_null else 100.0)
 	X2, new_y2 = MLP_training(machine, loser_moves, board_size, -10.0 if is_null else -100.0)
@@ -338,31 +356,77 @@ def run_MLP_game(machine, board_size):
 	myprint("partial_fit y : " + str(new_y))
 	machine.partial_fit(X, new_y)
 	
+def save_Q_table(Q):
+	with open("q_table.save", 'wb') as f:
+		pickle.dump(Q, f)
+	
+def load_Q_table():
+	with open("q_table.save", 'rb') as f:
+		Q = pickle.load(f)
+	return Q
+	
 def save_machine(MACHINE_ALL):
 	joblib.dump(MACHINE_ALL, 'machine.save')
 		
 def load_machine():
 	return joblib.load('machine.save')
 	
-def init_machine():
+def train_machine():
 	X = [[0,0,0,0,0,0,0,0,0]]
 	y = [[0,0,0,0,0,0,0,0,0]]
-	MACHINE_ALL = MLPRegressor(solver='sgd', alpha=1.0, hidden_layer_sizes=(150, 29), random_state=1000, activation="relu", max_iter=4000, batch_size=5, learning_rate="constant", learning_rate_init=0.005)
+	MACHINE_ALL = MLPRegressor(solver='sgd', alpha=1.0, hidden_layer_sizes=(1500, 29), random_state=1000, activation="relu", max_iter=4000, batch_size=5, learning_rate="constant", learning_rate_init=0.001)
 	MACHINE_ALL.partial_fit(X, y)
 	
-	max_game = 50000
+	max_game = 75000
+	actual_epsilon = Epsilon
+	dec_every = int(max_game / EpsilonParts)
 	for i in range(max_game):
 		if i % 10 == 0:
-			myprint("Game {} of {}".format(i, max_game),3)
-		run_MLP_game(MACHINE_ALL, board_size)
+			myprint("Game {} of {}".format(i, max_game),5)
+		run_MLP_game(MACHINE_ALL, board_size, actual_epsilon)
+		if i % dec_every == 0:
+			actual_epsilon -= EpsilonStep
+			if actual_epsilon < 0.0 :
+				actual_epsilon = 0.0
+			myprint("Epsilon now : " + str(actual_epsilon),2)
 		
 	save_machine(MACHINE_ALL)
 		
 	return MACHINE_ALL
 	
+def train_MLP_using_saved_Q_table(board_size):
+	Q = load_Q_table()
+	X = []
+	y = []
+	
+	for state_str in Q:
+		state_obj = TicTacToe(board_size, state_str)
+		X.append(state_obj.X())
+		cur_y = []
+		for y_coord in range(board_size):
+			for x_coord in range(board_size):
+				if (x_coord,y_coord) in Q[state_str]:
+					cur_y.append(Q[state_str][(x_coord,y_coord)])
+				else:
+					cur_y.append(0.0) # maybe should append like -1000 ?
+				
+		y.append(cur_y)
+		
+	# fake more training data to help regression
+	for z in range(2):
+		X += X
+		y += y
+	#myprint(X)
+	MACHINE_ALL = MLPRegressor(solver='sgd', alpha=1.0, hidden_layer_sizes=(2500), random_state=1000, activation="relu", max_iter=4000, batch_size=5, learning_rate="constant", learning_rate_init=0.002)
+	MACHINE_ALL.partial_fit(X, y)
+	
+	final_game = TicTacToe(board_size)
+	play_interactive(MACHINE_ALL, final_game)
+		
+	
 def train_using_MLP(board_size):
 	MACHINE_ALL = load_machine()
-	#MACHINE_ALL = init_machine()
+	#MACHINE_ALL = train_machine()
 	
 	final_game = TicTacToe(board_size)
 	play_interactive(MACHINE_ALL, final_game)
@@ -370,17 +434,9 @@ def train_using_MLP(board_size):
 if __name__ == '__main__':
 	board_size = 3
 	
-	train_using_MLP(board_size)
-	'''
-	a = TicTacToe(3)
-	a.play_x(1,0)
-	myprint(str(a))
-	myprint(repr(a))
-	myprint(to_xy(1,3))
-	myprint(to_index(1,0,3))
-	'''
-	#a = [1,2,3,445,3243,5]
-	#print(max(a))
+	train_MLP_using_saved_Q_table(board_size)
+	
+	#train_using_MLP(board_size)
 	
 	#train_using_Q_table(board_size)
 	
