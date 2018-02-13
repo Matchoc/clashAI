@@ -184,6 +184,7 @@ def play_a_move(Q, cur_state, turn):
 		possible_actions = Q.predict([cur_state.X()])
 		possible_actions = [(x, possible_actions[0][x]) for x in range(len(possible_actions[0]))]
 		possible_actions = sorted(possible_actions, key=lambda x: x[1], reverse=True)
+		myprint(repr(cur_state) + " : " + str(possible_actions))
 		#index = numpy.argmax(possible_actions)
 		for val in possible_actions:
 			action = to_xy(val[0], cur_state.size)
@@ -257,8 +258,8 @@ def play_a_game(Q, size, epsilon=0.0):
 def play_interactive(Q, final_game):
 	won = None
 	symbols = [X, O]
-	#players = ['Player', 'AI']
-	players = ['AI', 'Player']
+	players = ['Player', 'AI']
+	#players = ['AI', 'Player']
 	myprint(str(final_game), 10)
 	move_count = 0
 	while not won and move_count < 9:
@@ -396,6 +397,7 @@ def train_machine():
 	
 def train_MLP_using_saved_Q_table(board_size):
 	Q = load_Q_table()
+	#myprint("Q : " + str(Q))
 	X = []
 	y = []
 	
@@ -413,15 +415,20 @@ def train_MLP_using_saved_Q_table(board_size):
 		y.append(cur_y)
 		
 	# fake more training data to help regression
-	for z in range(2):
-		X += X
-		y += y
-	#myprint(X)
-	MACHINE_ALL = MLPRegressor(solver='sgd', alpha=1.0, hidden_layer_sizes=(2500), random_state=1000, activation="relu", max_iter=4000, batch_size=5, learning_rate="constant", learning_rate_init=0.002)
-	MACHINE_ALL.partial_fit(X, y)
+	#for z in range(2):
+	#	X += X
+	#	y += y
+	#myprint("X : " + str(X))
+	#myprint("y : " + str(y))
+	#MACHINE_ALL = MLPRegressor(solver='sgd', alpha=0.0001, hidden_layer_sizes=(350,85), random_state=1000, activation="logistic", max_iter=4000, learning_rate="adaptive", learning_rate_init=0.002) # 41 loss
+	#MACHINE_ALL = MLPRegressor(solver='sgd', alpha=0.0001, hidden_layer_sizes=(350,75), random_state=1000, activation="logistic", max_iter=4000, learning_rate="adaptive", learning_rate_init=0.002) # 67 loss
+	#MACHINE_ALL = MLPRegressor(solver='sgd', alpha=0.01, hidden_layer_sizes=(350,75), random_state=1000, activation="logistic", max_iter=4000, learning_rate="adaptive", learning_rate_init=0.002) # 89 loss
+	MACHINE_ALL = MLPRegressor(solver='sgd', alpha=0.0001, hidden_layer_sizes=(350,85), random_state=1000, activation="logistic", max_iter=4000, learning_rate="adaptive", learning_rate_init=0.002)
+	MACHINE_ALL.fit(X, y)
+	myprint("loss : {}, n_iter : {}".format(MACHINE_ALL.loss_, MACHINE_ALL.n_iter_))
 	
 	final_game = TicTacToe(board_size)
-	play_interactive(MACHINE_ALL, final_game)
+	#play_interactive(MACHINE_ALL, final_game)
 		
 	
 def train_using_MLP(board_size):
@@ -433,6 +440,10 @@ def train_using_MLP(board_size):
 	
 if __name__ == '__main__':
 	board_size = 3
+	
+	#b = '100011202'
+	#a = TicTacToe(3, b)
+	#myprint(str(a))
 	
 	train_MLP_using_saved_Q_table(board_size)
 	
