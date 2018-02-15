@@ -22,7 +22,7 @@ from PIL import Image
 from sklearn.externals import joblib
 from sklearn.neural_network import MLPClassifier, MLPRegressor
 
-PRINT_LEVEL=0
+PRINT_LEVEL=4
 DATA_FOLDER = "data"
 def myprint(msg, level=0):
 	if (level >= PRINT_LEVEL):
@@ -50,6 +50,12 @@ class ScopedTimer:
 EMPTY = 0
 X = 1
 O = 2
+#REWARD = 100.0
+#LOSS = -100.0
+#NULL = -10.0
+REWARD = 1.0
+LOSS = -1.0
+NULL = -0.1
 class TicTacToe:
 	def __init__(self, size=3, fromstr=None):
 		self.size = size
@@ -308,11 +314,11 @@ def train_using_Q_table(board_size):
 	for i in range(10000):
 		winner_moves, loser_moves, is_null = play_a_game(Q, board_size)
 		if is_null:
-			back_propagate(Q, -10.0, winner_moves)
-			back_propagate(Q, -10.0, loser_moves)
+			back_propagate(Q, NULL, winner_moves)
+			back_propagate(Q, NULL, loser_moves)
 		else:
-			back_propagate(Q, 100.0, winner_moves)
-			back_propagate(Q, -100.0, loser_moves)
+			back_propagate(Q, REWARD, winner_moves)
+			back_propagate(Q, LOSS, loser_moves)
 	
 	save_Q_table(Q)
 	
@@ -347,8 +353,8 @@ def MLP_training(machine, moves, board_size, reward):
 def run_MLP_game(machine, board_size, epsilon):
 	winner_moves, loser_moves, is_null = play_a_game(machine, board_size, epsilon)
 
-	X, new_y = MLP_training(machine, winner_moves, board_size, -10.0 if is_null else 100.0)
-	X2, new_y2 = MLP_training(machine, loser_moves, board_size, -10.0 if is_null else -100.0)
+	X, new_y = MLP_training(machine, winner_moves, board_size, NULL if is_null else REWARD)
+	X2, new_y2 = MLP_training(machine, loser_moves, board_size, NULL if is_null else LOSS)
 	
 	X.extend(X2)
 	new_y.extend(new_y2)
@@ -375,10 +381,11 @@ def load_machine():
 def train_machine():
 	X = [[0,0,0,0,0,0,0,0,0]]
 	y = [[0,0,0,0,0,0,0,0,0]]
-	MACHINE_ALL = MLPRegressor(solver='sgd', alpha=1.0, hidden_layer_sizes=(1500, 29), random_state=1000, activation="relu", max_iter=4000, batch_size=5, learning_rate="constant", learning_rate_init=0.001)
+	#MACHINE_ALL = MLPRegressor(solver='sgd', alpha=1.0, hidden_layer_sizes=(1500, 29), random_state=1000, activation="relu", max_iter=4000, batch_size=5, learning_rate="constant", learning_rate_init=0.001)
+	MACHINE_ALL = MLPRegressor(solver='sgd', tol=0.0005, alpha=0.00001, hidden_layer_sizes=(350,185), random_state=1000, activation="logistic", max_iter=4000, learning_rate="adaptive", learning_rate_init=0.002) # home 19
 	MACHINE_ALL.partial_fit(X, y)
 	
-	max_game = 75000
+	max_game = 25000
 	actual_epsilon = Epsilon
 	dec_every = int(max_game / EpsilonParts)
 	for i in range(max_game):
@@ -396,6 +403,7 @@ def train_machine():
 	return MACHINE_ALL
 	
 def train_MLP_using_saved_Q_table(board_size):
+	a = ScopedTimer("train_MLP_using_saved_Q_table",5)
 	Q = load_Q_table()
 	#myprint("Q : " + str(Q))
 	X = []
@@ -431,18 +439,19 @@ def train_MLP_using_saved_Q_table(board_size):
 	#MACHINE_ALL = MLPRegressor(solver='sgd', alpha=0.0001, hidden_layer_sizes=(350,85), random_state=1000, activation="logistic", max_iter=4000, learning_rate="adaptive", learning_rate_init=0.002) # 41 loss
 	#MACHINE_ALL = MLPRegressor(solver='sgd', alpha=0.01, hidden_layer_sizes=(350,75), random_state=1000, activation="logistic", max_iter=4000, learning_rate="adaptive", learning_rate_init=0.002) # 89 loss
 	#MACHINE_ALL = MLPRegressor(solver='sgd', tol=0.0005, alpha=0.00001, hidden_layer_sizes=(500,85), random_state=1000, activation="logistic", max_iter=4000, learning_rate="adaptive", learning_rate_init=0.002) # home 95
-	MACHINE_ALL = MLPRegressor(solver='sgd', tol=0.0005, alpha=0.00001, hidden_layer_sizes=(350,185), random_state=1000, activation="logistic", max_iter=4000, learning_rate="adaptive", learning_rate_init=0.002) # home 19
+	MACHINE_ALL = MLPRegressor(solver='sgd', tol=0.0000001, alpha=0.00001, hidden_layer_sizes=(350,185), random_state=1000, activation="logistic", max_iter=4000, learning_rate="adaptive", learning_rate_init=0.002) # 3 loss # home 19
 	 
 	MACHINE_ALL.fit(X, y)
-	myprint("loss : {}, n_iter : {}".format(MACHINE_ALL.loss_, MACHINE_ALL.n_iter_))
+	myprint("loss : {}, n_iter : {}".format(MACHINE_ALL.loss_, MACHINE_ALL.n_iter_),5)
 	
+	del a
 	final_game = TicTacToe(board_size)
-	#play_interactive(MACHINE_ALL, final_game)
+	play_interactive(MACHINE_ALL, final_game)
 		
 	
 def train_using_MLP(board_size):
-	MACHINE_ALL = load_machine()
-	#MACHINE_ALL = train_machine()
+	#MACHINE_ALL = load_machine()
+	MACHINE_ALL = train_machine()
 	
 	final_game = TicTacToe(board_size)
 	play_interactive(MACHINE_ALL, final_game)
