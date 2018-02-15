@@ -420,10 +420,19 @@ def train_MLP_using_saved_Q_table(board_size):
 	#	y += y
 	#myprint("X : " + str(X))
 	#myprint("y : " + str(y))
+	#MACHINE_ALL = MLPRegressor(solver='sgd',    alpha=0.0001, hidden_layer_sizes=(350,75), random_state=1000, activation="logistic", max_iter=4000, learning_rate="adaptive", learning_rate_init=0.002) # 67 loss # home 208
+	#MACHINE_ALL = MLPRegressor(solver='sgd', tol=0.0005, alpha=0.00005, hidden_layer_sizes=(350,85), random_state=1000, activation="logistic", max_iter=4000, learning_rate="adaptive", learning_rate_init=0.002) # home 175
+	#MACHINE_ALL = MLPRegressor(solver='sgd', tol=0.0001, alpha=0.00001, hidden_layer_sizes=(350,85), random_state=1000, activation="logistic", max_iter=4000, learning_rate="adaptive", learning_rate_init=0.001) # home 170
+	#MACHINE_ALL = MLPRegressor(solver='sgd', tol=0.0001, alpha=0.00001, hidden_layer_sizes=(350,85), random_state=1000, activation="logistic", max_iter=4000, learning_rate="adaptive", learning_rate_init=0.003) # home 166
+	#MACHINE_ALL = MLPRegressor(solver='sgd', tol=0.0001, alpha=0.00001, hidden_layer_sizes=(350,85), random_state=1000, activation="logistic", max_iter=4000, learning_rate="adaptive", learning_rate_init=0.002) # home 162
+	#MACHINE_ALL = MLPRegressor(solver='sgd', 			   alpha=0.0001, hidden_layer_sizes=(350,85), random_state=1000, activation="logistic", max_iter=4000, learning_rate="adaptive", learning_rate_init=0.002) # home 151
+	#MACHINE_ALL = MLPRegressor(solver='sgd', tol=0.0005, alpha=0.00001, hidden_layer_sizes=(350,85), random_state=1000, activation="logistic", max_iter=4000, learning_rate="adaptive", learning_rate_init=0.002) # home 124
+	#MACHINE_ALL = MLPRegressor(solver='sgd', alpha=0.00001, hidden_layer_sizes=(350,85), random_state=1000, activation="logistic", max_iter=4000, learning_rate="adaptive", learning_rate_init=0.002) # home 120
 	#MACHINE_ALL = MLPRegressor(solver='sgd', alpha=0.0001, hidden_layer_sizes=(350,85), random_state=1000, activation="logistic", max_iter=4000, learning_rate="adaptive", learning_rate_init=0.002) # 41 loss
-	#MACHINE_ALL = MLPRegressor(solver='sgd', alpha=0.0001, hidden_layer_sizes=(350,75), random_state=1000, activation="logistic", max_iter=4000, learning_rate="adaptive", learning_rate_init=0.002) # 67 loss
 	#MACHINE_ALL = MLPRegressor(solver='sgd', alpha=0.01, hidden_layer_sizes=(350,75), random_state=1000, activation="logistic", max_iter=4000, learning_rate="adaptive", learning_rate_init=0.002) # 89 loss
-	MACHINE_ALL = MLPRegressor(solver='sgd', alpha=0.0001, hidden_layer_sizes=(350,85), random_state=1000, activation="logistic", max_iter=4000, learning_rate="adaptive", learning_rate_init=0.002)
+	#MACHINE_ALL = MLPRegressor(solver='sgd', tol=0.0005, alpha=0.00001, hidden_layer_sizes=(500,85), random_state=1000, activation="logistic", max_iter=4000, learning_rate="adaptive", learning_rate_init=0.002) # home 95
+	MACHINE_ALL = MLPRegressor(solver='sgd', tol=0.0005, alpha=0.00001, hidden_layer_sizes=(350,185), random_state=1000, activation="logistic", max_iter=4000, learning_rate="adaptive", learning_rate_init=0.002) # home 19
+	 
 	MACHINE_ALL.fit(X, y)
 	myprint("loss : {}, n_iter : {}".format(MACHINE_ALL.loss_, MACHINE_ALL.n_iter_))
 	
