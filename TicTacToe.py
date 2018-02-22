@@ -17,7 +17,6 @@ import pickle
 import scipy.ndimage
 import multiprocessing
 import matplotlib.pyplot as plt
-import cv2
 from PIL import Image
 from sklearn.externals import joblib
 from sklearn.neural_network import MLPClassifier, MLPRegressor
@@ -91,7 +90,15 @@ class TicTacToe:
 		return "".join(map(str,self.board.reshape(self.size * self.size).tolist()))
 		
 	def X(self):
-		return self.board.reshape(self.size * self.size)
+		X = []
+		for x in  self.board.reshape(self.size * self.size):
+			if x == 0:
+				X.extend([1, 0, 0])
+			elif x == 1:
+				X.extend([0, 1, 0])
+			else:
+				X.extend([0, 0, 1])
+		return X
 		
 	def play_x(self, x, y):
 		self.board[y][x] = X
@@ -263,6 +270,7 @@ def play_a_game(Q, size, epsilon=0.0):
 	
 def play_interactive(Q, final_game):
 	won = None
+	keypad_remap = '-678345012'
 	symbols = [X, O]
 	players = ['Player', 'AI']
 	#players = ['AI', 'Player']
@@ -275,7 +283,8 @@ def play_interactive(Q, final_game):
 			move = None
 			while move is None:
 				try:
-					move = input('Your turn (0-8): ')  # Python 3
+					move = input('Your turn (1-9 on keypad): ')  # Python 3
+					move = keypad_remap[int(move)]
 					x, y = to_xy(move, final_game.size)
 					
 					print('playing ' + str((x, y)))
@@ -379,12 +388,12 @@ def load_machine():
 	return joblib.load('machine.save')
 	
 def train_machine():
-	X = [[0,0,0,0,0,0,0,0,0]]
+	X = [[0,0,0,0,0,0,0,0,0]*3]
 	y = [[0,0,0,0,0,0,0,0,0]]
 	#MACHINE_ALL = MLPRegressor(solver='sgd', alpha=1.0, hidden_layer_sizes=(1500, 29), random_state=1000, activation="relu", max_iter=4000, batch_size=5, learning_rate="constant", learning_rate_init=0.001)
-	MACHINE_ALL = MLPRegressor(solver='sgd', tol=0.0005, alpha=0.00001, hidden_layer_sizes=(350,185), random_state=1000, activation="logistic", max_iter=4000, learning_rate="adaptive", learning_rate_init=0.002) # home 19
-	MACHINE_ALL.partial_fit(X, y)
-	
+	MACHINE_ALL = MLPRegressor(solver='sgd', tol=0.0000001, alpha=0.0001, hidden_layer_sizes=(350,185), random_state=1000, activation="relu", max_iter=4000, learning_rate="invscaling", learning_rate_init=0.0000001, warm_start=True) # 3 loss # home 19
+	MACHINE_ALL.fit(X, y)
+
 	max_game = 50000
 	actual_epsilon = Epsilon
 	dec_every = int(max_game / EpsilonParts)
