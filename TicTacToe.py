@@ -22,7 +22,7 @@ from PIL import Image
 from sklearn.externals import joblib
 from sklearn.neural_network import MLPClassifier, MLPRegressor
 
-PRINT_LEVEL=4
+PRINT_LEVEL=0
 DATA_FOLDER = "data"
 def myprint(msg, level=0):
 	if (level >= PRINT_LEVEL):
@@ -50,12 +50,12 @@ class ScopedTimer:
 EMPTY = 0
 X = 1
 O = 2
-#REWARD = 100.0
-#LOSS = -100.0
-#NULL = -10.0
-REWARD = 1.0
-LOSS = -1.0
-NULL = -0.1
+REWARD = 100.0
+LOSS = -100.0
+NULL = -10.0
+#REWARD = 1.0
+#LOSS = -1.0
+#NULL = -0.1
 class TicTacToe:
 	def __init__(self, size=3, fromstr=None):
 		self.size = size
@@ -342,7 +342,7 @@ def MLP_training(machine, moves, board_size, reward):
 			max_Q = max(next_adjusted_y)
 			
 		estimated_y = machine.predict([state.X()])
-		estimated_y[0][index] = estimated_y[0][index] + (Discount_factor * max_Q)
+		estimated_y[0][index] = ((1-Learning_rate) * estimated_y[0][index]) + (Learning_rate * (Discount_factor * max_Q))
 		new_y.append(estimated_y[0])
 		next_state = state
 		next_action = action
@@ -385,12 +385,14 @@ def train_machine():
 	MACHINE_ALL = MLPRegressor(solver='sgd', tol=0.0005, alpha=0.00001, hidden_layer_sizes=(350,185), random_state=1000, activation="logistic", max_iter=4000, learning_rate="adaptive", learning_rate_init=0.002) # home 19
 	MACHINE_ALL.partial_fit(X, y)
 	
-	max_game = 25000
+	max_game = 50000
 	actual_epsilon = Epsilon
 	dec_every = int(max_game / EpsilonParts)
+	average_total = 0
 	for i in range(max_game):
+		average_total += MACHINE_ALL.loss_
 		if i % 10 == 0:
-			myprint("Game {} of {}".format(i, max_game),5)
+			myprint("Game {} of {} -> loss : {}, n_iter : {}, avg : {}".format(i, max_game, MACHINE_ALL.loss_, MACHINE_ALL.n_iter_, average_total / i),5)
 		run_MLP_game(MACHINE_ALL, board_size, actual_epsilon)
 		if i % dec_every == 0:
 			actual_epsilon -= EpsilonStep
@@ -450,8 +452,8 @@ def train_MLP_using_saved_Q_table(board_size):
 		
 	
 def train_using_MLP(board_size):
-	#MACHINE_ALL = load_machine()
-	MACHINE_ALL = train_machine()
+	MACHINE_ALL = load_machine()
+	#MACHINE_ALL = train_machine()
 	
 	final_game = TicTacToe(board_size)
 	play_interactive(MACHINE_ALL, final_game)
@@ -463,9 +465,9 @@ if __name__ == '__main__':
 	#a = TicTacToe(3, b)
 	#myprint(str(a))
 	
-	train_MLP_using_saved_Q_table(board_size)
+	#train_MLP_using_saved_Q_table(board_size)
 	
-	#train_using_MLP(board_size)
+	train_using_MLP(board_size)
 	
 	#train_using_Q_table(board_size)
 	
