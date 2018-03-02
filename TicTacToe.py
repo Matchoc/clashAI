@@ -21,7 +21,7 @@ from PIL import Image
 from sklearn.externals import joblib
 from sklearn.neural_network import MLPClassifier, MLPRegressor
 
-PRINT_LEVEL=0
+PRINT_LEVEL=4
 DATA_FOLDER = "data"
 def myprint(msg, level=0):
 	if (level >= PRINT_LEVEL):
@@ -249,7 +249,7 @@ def play_a_game(Q, size, epsilon=0.0):
 			move += 1
 	
 	is_null = False
-	if move >= size * size:
+	if move >= size * size and not winner:
 		myprint("Game ended in NULL",3)
 		winner_moves = x_moves
 		loser_moves = o_moves
@@ -305,7 +305,12 @@ def play_interactive(Q, final_game):
 					print(final_game.board)
 					move = None
 		else:
+			cur_state = final_game
 			ai_move, won = play_a_move(Q, final_game, s)
+			if s == X:
+				x_moves.append([copy.deepcopy(cur_state), ai_move])
+			else:
+				o_moves.append([copy.deepcopy(cur_state), ai_move])
 			move_count += 1
 		
 		myprint(str(final_game), 10)
@@ -321,7 +326,7 @@ def play_interactive(Q, final_game):
 		symbols += [s]
 
 	is_null = False
-	if move_count >= final_game.size * final_game.size:
+	if move_count >= final_game.size * final_game.size and not won:
 		myprint("Game ended in NULL",3)
 		winner_moves = x_moves
 		loser_moves = o_moves
@@ -425,6 +430,10 @@ def train_machine_interactive(board_size):
 		X, new_y = MLP_training(MACHINE_ALL, winner_moves, board_size, NULL if is_null else REWARD)
 		X2, new_y2 = MLP_training(MACHINE_ALL, loser_moves, board_size, NULL if is_null else LOSS)
 		
+		myprint("X2 " + str(X2))
+		myprint("new_y2 " + str(new_y2))
+		myprint("loser_moves " + str(loser_moves))
+		
 		X.extend(X2)
 		new_y.extend(new_y2)
 		
@@ -438,10 +447,10 @@ def train_machine(board_size):
 	y = [[0,0,0,0,0,0,0,0,0]]
 	#MACHINE_ALL = MLPRegressor(solver='sgd', alpha=1.0, hidden_layer_sizes=(1500, 29), random_state=1000, activation="relu", max_iter=4000, batch_size=5, learning_rate="constant", learning_rate_init=0.001)
 	#MACHINE_ALL = MLPRegressor(solver='sgd', tol=0.0000001, alpha=0.0001, hidden_layer_sizes=(350,185), random_state=1000, activation="relu", max_iter=4000, learning_rate="invscaling", learning_rate_init=0.0000001, warm_start=True) # 3 loss # home 19
-	MACHINE_ALL = MLPRegressor(solver='sgd', tol=0.0000001, alpha=0.0001, hidden_layer_sizes=(350,185), random_state=1000, activation="relu", max_iter=4000, learning_rate="invscaling", learning_rate_init=0.01, warm_start=True) # 3 loss # home 19
+	MACHINE_ALL = MLPRegressor(solver='sgd', tol=0.0000001, alpha=0.0001, hidden_layer_sizes=(350,185), random_state=1000, activation="relu", max_iter=4000, learning_rate="invscaling", learning_rate_init=0.0001, warm_start=True) # 3 loss # home 19
 	MACHINE_ALL.fit(X, y)
 
-	max_game = 20000
+	max_game = 90000
 	actual_epsilon = Epsilon
 	dec_every = int(max_game / EpsilonParts)
 	average_total = 0
@@ -528,8 +537,8 @@ if __name__ == '__main__':
 	
 	#train_MLP_using_saved_Q_table(board_size)
 	
-	#train_using_MLP(board_size)
-	train_using_MLP_interactive(board_size)
+	train_using_MLP(board_size)
+	#train_using_MLP_interactive(board_size)
 	
 	#train_using_Q_table(board_size)
 	
