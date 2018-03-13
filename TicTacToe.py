@@ -21,8 +21,39 @@ from PIL import Image
 from sklearn.externals import joblib
 from sklearn.neural_network import MLPClassifier, MLPRegressor
 
-PRINT_LEVEL=4
+###############################################################################
+# CONSTANTS GLOBALS
+###############################################################################
+
+PRINT_LEVEL=0
 DATA_FOLDER = "data"
+Discount_factor = 0.9
+Learning_rate = 0.5
+
+#Epsilon = 0.5
+#EpsilonStep = 0.1
+#EpsilonParts = 11
+Epsilon = 0.0
+EpsilonStep = 0.0
+EpsilonParts = 1
+
+EMPTY = 0
+X = 1
+O = 2
+
+REWARD = 100.0
+LOSS = -100.0
+NULL = -10.0
+#REWARD = 1.0
+#LOSS = -1.0
+#NULL = -0.1
+
+EXPERIENCE_SIZE = 100
+
+###############################################################################
+# UTILITY CLASS
+###############################################################################
+
 def myprint(msg, level=0):
 	if (level >= PRINT_LEVEL):
 		#sys.stdout.write((str(msg) + "\n").encode('UTF-8'))
@@ -46,15 +77,6 @@ class ScopedTimer:
 		myprint("{name} : {delta} / {total}".format(name=self.name, delta=str(delta), total=str(ScopedTimer.totals[self.name])), self.level)
 		#myprint(str(self.name) + " : " + str(delta),self.level)
 
-EMPTY = 0
-X = 1
-O = 2
-REWARD = 100.0
-LOSS = -100.0
-NULL = -10.0
-#REWARD = 1.0
-#LOSS = -1.0
-#NULL = -0.1
 class TicTacToe:
 	def __init__(self, size=3, fromstr=None):
 		self.size = size
@@ -137,7 +159,10 @@ class TicTacToe:
 		full_line |= (diag[0] != EMPTY and diag.tolist().count(diag[0]) == len(diag))
 		
 		return full_line
-	
+		
+###############################################################################
+# FUNCTIONS
+###############################################################################
 	
 def init_cost_action(Q, state, valid_actions):
 	res = {action : 0 for action in valid_actions}
@@ -147,17 +172,6 @@ def get_max(Q_row):
 	Q_values = numpy.array(list(Q_row.values()))
 	max_val = Q_values[Q_values.argmax()]
 	return max_val
-	
-Discount_factor = 0.9
-Learning_rate = 0.5
-
-#Epsilon = 0.5
-#EpsilonStep = 0.1
-#EpsilonParts = 11
-
-Epsilon = 0.0
-EpsilonStep = 0.0
-EpsilonParts = 1
 
 def back_propagate(Q, leaf_reward, moves):
 	prev = None
@@ -387,14 +401,25 @@ def MLP_training(machine, moves, board_size, reward):
 	
 	return X, new_y
 	
-def run_MLP_game(machine, board_size, epsilon):
-	winner_moves, loser_moves, is_null = play_a_game(machine, board_size, epsilon)
+def run_MLP_game(machine, board_size, data):
+	winner_moves, loser_moves, is_null = play_a_game(machine, board_size, data["actual_epsilon"])
 
 	X, new_y = MLP_training(machine, winner_moves, board_size, NULL if is_null else REWARD)
 	X2, new_y2 = MLP_training(machine, loser_moves, board_size, NULL if is_null else LOSS)
 	
 	X.extend(X2)
 	new_y.extend(new_y2)
+	
+	data["experience"]["X"].extend(X)
+	data["experience"]["y"].extend(new_y)
+	
+	myprint(random.choice(data["experience"]["X"]))
+	
+	if EXPERIENCE_SIZE > 0:
+		for i in range(EXPERIENCE_SIZE):
+			index = random.choice(len(data["experience"]["X"]))
+			X.add(data["experience"]["X"][index])
+			new_y.add(data["experience"]["y"][index])
 	
 	myprint("partial_fit X : " + str(X))
 	myprint("partial_fit y : " + str(new_y))
@@ -450,7 +475,10 @@ def train_machine(board_size):
 	MACHINE_ALL = MLPRegressor(solver='sgd', tol=0.0000001, alpha=0.0001, hidden_layer_sizes=(350,185), random_state=1000, activation="relu", max_iter=4000, learning_rate="invscaling", learning_rate_init=0.0001, warm_start=True) # 3 loss # home 19
 	MACHINE_ALL.fit(X, y)
 
-	max_game = 90000
+	game_data = {}
+	game_data["actual_epsilon"] = Epsilon
+	game_data["experience"] = {"X":[],"y":[]}
+	max_game = 50000
 	actual_epsilon = Epsilon
 	dec_every = int(max_game / EpsilonParts)
 	average_total = 0
@@ -458,13 +486,12 @@ def train_machine(board_size):
 		average_total += MACHINE_ALL.loss_
 		if i % 10 == 0:
 			myprint("Game {} of {} -> loss : {}, n_iter : {}, avg : {}".format(i, max_game, MACHINE_ALL.loss_, MACHINE_ALL.n_iter_, average_total / i),5)
-		if i > max_game - 10:
-			PRINT_LEVEL = 0
-		run_MLP_game(MACHINE_ALL, board_size, actual_epsilon)
+		run_MLP_game(MACHINE_ALL, board_size, game_data)
 		if i % dec_every == 0:
 			actual_epsilon -= EpsilonStep
 			if actual_epsilon < 0.0 :
 				actual_epsilon = 0.0
+			game_data["actual_epsilon"] = actual_epsilon
 			myprint("Epsilon now : " + str(actual_epsilon),2)
 		
 	save_machine(MACHINE_ALL)
@@ -527,7 +554,11 @@ def train_using_MLP(board_size):
 	
 def train_using_MLP_interactive(board_size):
 	MACHINE_ALL = train_machine_interactive(board_size)
-	
+
+###############################################################################
+# MAIN
+###############################################################################
+
 if __name__ == '__main__':
 	board_size = 3
 	
