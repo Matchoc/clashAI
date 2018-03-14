@@ -25,7 +25,7 @@ from sklearn.neural_network import MLPClassifier, MLPRegressor
 # CONSTANTS GLOBALS
 ###############################################################################
 
-PRINT_LEVEL=0
+PRINT_LEVEL=4
 DATA_FOLDER = "data"
 Discount_factor = 0.9
 Learning_rate = 0.5
@@ -33,9 +33,9 @@ Learning_rate = 0.5
 #Epsilon = 0.5
 #EpsilonStep = 0.1
 #EpsilonParts = 11
-Epsilon = 0.0
-EpsilonStep = 0.0
-EpsilonParts = 1
+Epsilon = 0.5
+EpsilonStep = 0.1
+EpsilonParts = 11
 
 EMPTY = 0
 X = 1
@@ -48,7 +48,7 @@ NULL = -10.0
 #LOSS = -1.0
 #NULL = -0.1
 
-EXPERIENCE_SIZE = 100
+EXPERIENCE_SIZE = 500
 
 ###############################################################################
 # UTILITY CLASS
@@ -410,16 +410,15 @@ def run_MLP_game(machine, board_size, data):
 	X.extend(X2)
 	new_y.extend(new_y2)
 	
-	data["experience"]["X"].extend(X)
-	data["experience"]["y"].extend(new_y)
+	combined = [(valX, valy) for valX, valy in zip(X, new_y)]
+	data["experience"].extend(combined)
 	
-	myprint(random.choice(data["experience"]["X"]))
-	
-	if EXPERIENCE_SIZE > 0:
-		for i in range(EXPERIENCE_SIZE):
-			index = random.choice(len(data["experience"]["X"]))
-			X.add(data["experience"]["X"][index])
-			new_y.add(data["experience"]["y"][index])
+	#random.shuffle(data["experience"])
+	if EXPERIENCE_SIZE > 0 and len(data["experience"]) >= EXPERIENCE_SIZE:
+		exp = [random.choice(data["experience"]) for i in range(EXPERIENCE_SIZE)]
+		a,b = zip(*exp)
+		X.extend(a)
+		new_y.extend(b)
 	
 	myprint("partial_fit X : " + str(X))
 	myprint("partial_fit y : " + str(new_y))
@@ -477,7 +476,7 @@ def train_machine(board_size):
 
 	game_data = {}
 	game_data["actual_epsilon"] = Epsilon
-	game_data["experience"] = {"X":[],"y":[]}
+	game_data["experience"] = []
 	max_game = 50000
 	actual_epsilon = Epsilon
 	dec_every = int(max_game / EpsilonParts)
