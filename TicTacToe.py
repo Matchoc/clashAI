@@ -413,7 +413,8 @@ def run_MLP_game(machine, board_size, data):
 	combined = [(valX, valy) for valX, valy in zip(X, new_y)]
 	data["experience"].extend(combined)
 	
-	#random.shuffle(data["experience"])
+	if len(data["experience"]) > 6000:
+		data["experience"] = data["experience"][1000:]
 	if EXPERIENCE_SIZE > 0 and len(data["experience"]) >= EXPERIENCE_SIZE:
 		exp = [random.choice(data["experience"]) for i in range(EXPERIENCE_SIZE)]
 		a,b = zip(*exp)
@@ -545,8 +546,8 @@ def train_MLP_using_saved_Q_table(board_size):
 		
 	
 def train_using_MLP(board_size):
-	#MACHINE_ALL = load_machine()
-	MACHINE_ALL = train_machine(board_size)
+	MACHINE_ALL = load_machine()
+	#MACHINE_ALL = train_machine(board_size)
 	
 	final_game = TicTacToe(board_size)
 	play_interactive(MACHINE_ALL, final_game)
